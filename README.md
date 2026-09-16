@@ -15,27 +15,13 @@ machine it was taken on, it says so and shows the second machine.
 
 ---
 
-### Shipped
+### Products
 
 **[capwords](https://github.com/xdeng3-collab/capwords)** — iOS app: photograph an
-object, learn the word. React Native + Expo SDK 52, ~5,500 lines, built and
-iterated over a month.
-
-The part I would defend in a review is the **design system**: every sprite,
-icon, and UI element is rendered from code-authored pixel grids as React Native
-Views — the pet, its outfits, the sticker art, the whole Stardew-Valley-styled
-interface — with **zero image assets** in the bundle. Sprites are data, so a new
-outfit is a grid literal rather than an artist round-trip.
-
-The other part is the **pricing model**, worked backwards from measured unit
-cost: $0.0025 per word all-in (API input, API output, storage), against four
-tiers — free at 3 words/day, $0.01/word packs, $4.99/month, $39.99/year. The
-question that drove it is which tier a heavy user should be pushed toward before
-they become unprofitable.
-
-Status: **prototype**. State lives in AsyncStorage on the device, so the social
-features in the README are designed and not yet backed by a server, and billing
-is modelled rather than integrated.
+object, learn the word. React Native + Expo, Supabase, a native StoreKit 2 module,
+a home-screen widget, and a design system rendered from code-authored pixel grids
+with zero image assets. Four pricing tiers modelled against a ~$0.0025/word
+marginal cost.
 
 ---
 
