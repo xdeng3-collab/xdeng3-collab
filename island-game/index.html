@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style>
+<title>拾荒岛</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+<style>
+/* Layout: one full-screen canvas (island or salvage puzzle), HUD floats over it, sheets rise from the bottom. */
+:root{
+  color-scheme: dark;
+  --sea-deep:#0c4a63; --sea:#2aa3c4;
+  --panel:#0e3443; --panel-2:#16485b; --line:#2b6c82;
+  --ink:#f3fbfd; --ink-dim:#a9cdd8;
+  --sun:#ffc93c; --sun-ink:#3a2a00; --bad:#ff7a6b; --good:#7fe08f;
+  --font: "Fredoka", ui-rounded, "SF Pro Rounded", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+}
+html,body{height:100%}
+body{background:var(--sea-deep);color:var(--ink);font-family:var(--font);overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+#app{position:relative;height:100%;overflow:hidden}
+#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+button:focus-visible{outline:2px solid var(--sun);outline-offset:2px}
+
+.gut{padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+#hud{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between}
+#hud > *{pointer-events:none}
+#top{padding-block:10px 0;display:flex;flex-direction:column;gap:8px}
+#resbar{display:flex;gap:6px}
+.chip{flex:1;min-width:0;display:flex;align-items:center;gap:6px;justify-content:center;background:var(--panel);border:1.5px solid var(--line);
+  border-radius:999px;padding:6px 8px;font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
+.chip.bump{animation:bump .35s}
+@keyframes bump{40%{transform:scale(1.12);border-color:var(--sun)}}
+.cube{flex:none;width:14px;height:14px;border-radius:3.5px;background:var(--c);box-shadow:inset 0 -3.5px 0 rgba(0,0,0,.28), inset 0 2px 0 rgba(255,255,255,.4)}
+#row2{display:flex;gap:8px;align-items:flex-start}
+#quest{pointer-events:auto;flex:1;min-width:0;text-align:left;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:8px 12px;
+  display:flex;align-items:center;gap:10px}
+#quest .q-l{flex:1;min-width:0}
+#quest .q-k{font-size:11px;letter-spacing:.08em;color:var(--ink-dim)}
+#quest .q-t{font-size:14px;font-weight:600;line-height:1.3}
+#quest .q-p{font-size:13px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+#quest.done{border-color:var(--sun);animation:glow 1.2s infinite}
+#quest .q-claim{background:var(--sun);color:var(--sun-ink);font-weight:700;border-radius:999px;padding:5px 12px;font-size:13px}
+@keyframes glow{50%{box-shadow:0 0 0 4px rgba(255,201,60,.25)}}
+.round{pointer-events:auto;flex:none;width:42px;height:42px;border-radius:14px;background:var(--panel);border:1.5px solid var(--line);display:grid;place-items:center}
+.round svg{width:20px;height:20px;fill:none;stroke:var(--ink);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#bottom{padding-block:0 12px;display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
+#parts{pointer-events:auto;display:flex;gap:4px;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:6px 8px}
+.part{display:flex;align-items:center;gap:3px;font-weight:600;font-size:14px;font-variant-numeric:tabular-nums;padding:0 3px}
+.part svg{width:22px;height:22px}
+.part.zero{opacity:.38}
+#stat{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink-dim);text-align:right;line-height:1.35}
+#stat b{color:var(--ink);font-weight:700}
+
+#pzui{position:absolute;inset:0 0 auto 0;pointer-events:none;padding-block:10px 0;display:flex;flex-direction:column;gap:6px}
+#pzhead{display:flex;align-items:center;gap:10px}
+#pzback{pointer-events:auto;background:var(--panel);border:1.5px solid var(--line);border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px}
+#pzname{flex:1;min-width:0;font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pzcount{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;background:var(--panel);border:1.5px solid var(--line);border-radius:999px;padding:6px 12px}
+#pzbar{height:8px;border-radius:99px;background:rgba(6,36,48,.55);overflow:hidden}
+#pzbar i{display:block;height:100%;width:0;background:var(--sun);border-radius:99px;transition:width .2s}
+#pzhint{font-size:13.5px;font-weight:600;text-align:center;color:var(--ink);text-shadow:0 1px 3px rgba(0,40,55,.8);min-height:20px}
+
+#scrim{position:absolute;inset:0;background:rgba(4,26,36,.45)}
+#sheet{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-top:2px solid var(--line);border-radius:22px 22px 0 0;
+  padding-block:16px calc(16px + env(safe-area-inset-bottom, 0px));max-height:72%;overflow-y:auto;animation:rise .22s ease-out}
+@keyframes rise{from{transform:translateY(40px);opacity:0}}
+#sheet h2{margin:0;font-size:19px;font-weight:700;text-wrap:balance}
+#sheet p{margin:0;color:var(--ink-dim);font-size:14px;line-height:1.5}
+.sh-head{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+.sh-head img{flex:none;width:64px;height:64px;border-radius:14px;background:var(--panel-2);object-fit:contain;image-rendering:pixelated}
+.sh-head .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.x{flex:none;width:34px;height:34px;border-radius:50%;background:var(--panel-2);font-size:18px;line-height:1;align-self:flex-start}
+.costs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cost{display:inline-flex;align-items:center;gap:5px;background:var(--panel-2);border-radius:999px;padding:4px 9px;font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
+.cost svg{width:18px;height:18px}
+.cost.lack{color:var(--bad)}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:7px 0;border-top:1px solid var(--line)}
+.kv span:first-child{color:var(--ink-dim)}
+.kv span:last-child{font-weight:600;text-align:right}
+.btn{display:block;width:100%;margin-top:14px;background:var(--sun);color:var(--sun-ink);font-weight:700;font-size:17px;border-radius:16px;padding:13px 16px;
+  box-shadow:inset 0 -4px 0 rgba(120,80,0,.35)}
+.btn:active{transform:translateY(2px);box-shadow:inset 0 -2px 0 rgba(120,80,0,.35)}
+.btn[disabled]{background:var(--panel-2);color:var(--ink-dim);box-shadow:none}
+.btn.ghost{background:var(--panel-2);color:var(--ink);box-shadow:none}
+.btn.danger{background:var(--bad);color:#3a0a04;box-shadow:inset 0 -4px 0 rgba(120,20,0,.35)}
+.blist{display:flex;flex-direction:column;gap:8px}
+.bitem{display:flex;gap:10px;align-items:center;text-align:left;background:var(--panel-2);border-radius:16px;padding:8px 10px;border:1.5px solid transparent}
+.bitem img{flex:none;width:66px;height:66px;object-fit:cover;object-position:50% 62%;border-radius:12px;background:var(--panel)}
+.bitem .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.bitem .nm{font-weight:700;font-size:15.5px}
+.bitem .ds{font-size:12.5px;color:var(--ink-dim)}
+.bitem .costs .cost{background:var(--panel);font-size:13px;padding:3px 7px}
+.bitem.off{opacity:.62}
+.bitem:not(.off){border-color:var(--line)}
+.bitem .go{flex:none;font-weight:700;font-size:13px;color:var(--sun)}
+
+#modal{position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,26,36,.6);padding:20px}
+.card{width:min(340px,100%);background:var(--panel);border:2px solid var(--line);border-radius:24px;padding:22px 20px 18px;text-align:center;animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.8);opacity:0}}
+.card h2{margin:0 0 4px;font-size:22px}
+.card .sub{color:var(--ink-dim);font-size:14px;margin-bottom:12px}
+.loot{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0}
+.prize{margin:6px auto 2px;width:112px;height:112px;border-radius:28px;background:radial-gradient(circle at 50% 45%, #2d7f96, var(--panel-2));display:grid;place-items:center;animation:prize 1.6s ease-in-out infinite}
+.prize svg{width:76px;height:76px}
+@keyframes prize{50%{transform:translateY(-5px) rotate(3deg)}}
+.pname{font-weight:700;font-size:18px;color:var(--sun)}
+.pdesc{font-size:13px;color:var(--ink-dim)}
+.tag{display:inline-block;background:var(--good);color:#083b14;font-weight:700;font-size:12.5px;border-radius:999px;padding:3px 10px;margin-bottom:6px}
+
+#toast{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);background:rgba(6,36,48,.92);border:1.5px solid var(--line);border-radius:999px;padding:8px 16px;
+  font-size:14px;font-weight:600;max-width:calc(100% - 32px);text-align:center;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.on{opacity:1}
+@media (prefers-reduced-motion: reduce){ .prize,#quest.done{animation:none} }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div id="top" class="gut">
+      <div id="resbar"></div>
+      <div id="row2">
+        <button id="quest" type="button"></button>
+        <button class="round" id="btnSound" type="button" aria-label="声音开关"></button>
+        <button class="round" id="btnMenu" type="button" aria-label="菜单">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="bottom" class="gut">
+      <div id="parts"></div>
+      <div id="stat"></div>
+    </div>
+  </div>
+
+  <div id="pzui" class="gut" hidden>
+    <div id="pzhead">
+      <button id="pzback" type="button">撤离</button>
+      <div id="pzname"></div>
+      <div id="pzcount"></div>
+    </div>
+    <div id="pzbar"><i></i></div>
+    <div id="pzhint"></div>
+  </div>
+
+  <div id="scrim" hidden></div>
+  <div id="sheet" class="gut" hidden></div>
+  <div id="modal" hidden></div>
+  <div id="toast"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const app = $('#app'), cv = $('#cv');
+let g = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+/* ---------- data ---------- */
+const N = 13, C = 6, TW = 32, TH = 16, LH = 14;
+const RES = {
+  w: { name: '木材', col: '#c98a4b' },
+  m: { name: '金属', col: '#9aa7b4' },
+  p: { name: '塑料', col: '#4fb3e8' },
+  g: { name: '玻璃', col: '#6fd08c' },
+};
+const RK = ['w', 'm', 'p', 'g'];
+// pixel colours in the salvage pictures, and which material each one turns into
+const PAL = {
+  w: { col: '#d39a5a', r: 'w' }, n: { col: '#8a5a34', r: 'w' },
+  m: { col: '#a7b3be', r: 'm' }, k: { col: '#3d4652', r: 'm' },
+  p: { col: '#4fb3e8', r: 'p' }, r: { col: '#e5533d', r: 'p' }, y: { col: '#ffcf3f', r: 'p' },
+  g: { col: '#6fd08c', r: 'g' }, o: { col: '#f3f1e8', r: 'g' },
+};
+const PARTS = {
+  gear:    { name: '齿轮组', desc: '回收站的核心零件' },
+  turbine: { name: '涡轮',   desc: '风力发电机的核心零件' },
+  lens:    { name: '透镜',   desc: '灯塔的核心零件' },
+  seed:    { name: '种子箱', desc: '农田的核心零件' },
+};
+const PK = ['gear', 'turbine', 'lens', 'seed'];
+const BLD = {
+  shelter:    { name: '工棚',       part: null,      cost: { w: 30, m: 10 },        desc: '施工队 +1，填海更快' },
+  recycler:   { name: '回收站',     part: 'gear',    cost: { w: 20, m: 40, p: 10 }, desc: '自动分拣垃圾，持续产出材料' },
+  windmill:   { name: '风力发电机', part: 'turbine', cost: { m: 50, p: 30 },        desc: '所有回收站产量 +50%' },
+  lighthouse: { name: '灯塔',       part: 'lens',    cost: { w: 30, m: 60, g: 40 }, desc: '驱散迷雾，露出更远的海域', max: 1 },
+  farm:       { name: '农田',       part: 'seed',    cost: { w: 40, p: 20, g: 10 }, desc: '清扫带回的材料 +20%' },
+};
+const BK = ['shelter', 'recycler', 'windmill', 'lighthouse', 'farm'];
+
+function disc(n, fn) {
+  const rows = [], c = (n - 1) / 2;
+  for (let y = 0; y < n; y++) { let r = ''; for (let x = 0; x < n; x++) r += fn(Math.hypot(x - c, y - c), Math.atan2(y - c, x - c)) || '.'; rows.push(r); }
+  return rows;
+}
+const PICS = {
+  crate: { name: '漂流木箱', rows: [
+    'nnnnnnnnnn','nwwwwwwwwn','nwnwwwwnwn','nwwnwwnwwn','nwwwnnwwwn','nwwwnnwwwn','nwwnwwnwwn','nwnwwwwnwn','nwwwwwwwwn','nnnnnnnnnn' ] },
+  duck: { name: '巨型小黄鸭', rows: [
+    '......yyyy....','.....yyyyyy...','.....yyyykyy..','.....yyyyyyyrr','.....yyyyyyrrr','......yyyyyy..','y......yyyy...',
+    'yy...yyyyyyy..','yyyyyyyyyyyyy.','yyyyyyyyyyyyy.','.yyyyyyyyyyyy.','..yyyyyyyyyy..','...yyyyyyyy...','.pp.pppppp.pp.' ] },
+  boat: { name: '搁浅的帆船', rows: [
+    '......n.......','.....onr......','....oonrr.....','...ooonrrr....','..oooonrrrr...','.ooooonrrrrr..','oooooonrrrrrr.',
+    '......n.......','nnnnnnnnnnnnnn','wwwwwwwwwwwwww','.wwpwwwwwwpww.','..wwwwwwwwww..' ] },
+  car: { name: '泡水的轿车', rows: [
+    '.....rrrrrr.....','....rppprpppr...','...rpppprppppr..','.rrrrrrrrrrrrrr.','rrrrrrrrrrrrrrry',
+    'rrrrrrrrrrrrrrrr','rrkkkrrrrrrkkkrr','.kkmkk....kkmkk.','..kkk......kkk..' ] },
+  can: { name: '汽水罐', rows: [
+    '..mmmm..','.mmmmmm.','.rrrrrr.','.rrrrrr.','.roooor.','.rorrrr.','.roooor.','.rrrror.','.roooor.','.rrrrrr.','.rrrrrr.','.mmmmmm.','..mmmm..' ] },
+  bottle: { name: '漂流瓶', rows: [
+    '...nn...','...gg...','...gg...','..gggg..','.gogggg.','.gggggg.','.gwwwwg.','.gwnnwg.','.gwwwwg.','.gwnnwg.','.gwwwwg.','.gggggg.','.gggggg.','..gggg..' ] },
+  tv: { name: '老电视机', rows: [
+    '...k......k...','....k....k....','.....k..k.....','nnnnnnnnnnnnnn','nppppppppnnmmn','npoppppppnnnnn',
+    'nppppppppnnmmn','nppppppppnnnnn','nppppppppnnmmn','nnnnnnnnnnnnnn','.k..........k.' ] },
+  shoe: { name: '漂来的球鞋', rows: [
+    'pppp............','poop............','pppop...........','ppppop..........','pppppopp........',
+    'pppprrrrrpppp...','pprrrppppppppppp','oooooooooooooooo','kkkkkkkkkkkkkkkk' ] },
+  robot: { name: '废弃机器人', rows: [
+    '......yy......','......mm......','..mmmmmmmmmm..','..mppmmmmppm..','..mppmmmmppm..','..mmmmmmmmmm..','..mmkkkkkkmm..',
+    '..mmmmmmmmmm..','.....kkkk.....','.mmmmmmmmmmmm.','kmmyypprrmmmmk','kmmmmmmmmmmmmk','..kkk....kkk..','.kkkk....kkkk.' ] },
+  container: { name: '集装箱', rows: [
+    'kkkkkkkkkkkkkkkk','krrkrrkrrkrrkrrk','krrkrrkrrkrrkrrk','krrkooooooookrrk','krrkooooooookrrk',
+    'krrkrrkrrkrrkrrk','krrkrrkrrkrrkrrk','krrkrrkrrkrrkrrk','kkkkkkkkkkkkkkkk' ] },
+  house: { name: '漂来的小屋', rows: [
+    '......rr......','.....rrrr.mm..','....rrrrrrmm..','...rrrrrrrrr..','..rrrrrrrrrr..','.rrrrrrrrrrrr.','rrrrrrrrrrrrrr',
+    '.wwwwwwwwwwww.','.wppwwwwwwppw.','.wppwwnnwwppw.','.wwwwwnnwwwww.','.wwwwwnnwwwww.','gggggggggggggg' ] },
+  tire: { name: '旧轮胎', rows: disc(12, d => d > 5.9 || d < 2.4 ? 0 : d < 3.4 ? 'm' : 'k') },
+  buoy: { name: '救生圈', rows: disc(12, (d, a) => d > 5.9 || d < 2.6 ? 0 : Math.floor((a + Math.PI * 1.25) / (Math.PI / 2)) % 2 ? 'r' : 'o') },
+  ball: { name: '沙滩球', rows: disc(12, (d, a) => d > 5.9 ? 0 : d < 1.5 ? 'o' : ['r', 'o', 'p', 'y', 'o', 'g'][Math.floor((a + Math.PI) / (Math.PI / 3)) % 6]) },
+};
+const FIXED = [
+  [8,6,'crate','gear'], [6,9,'duck','gear'], [3,5,'boat','turbine'], [5,3,'bottle','lens'], [9,4,'car','turbine'],
+  [2,8,'container','seed'], [10,9,'house','seed'], [6,1,'robot','lens'], [10,2,'tv','turbine'], [1,3,'container','gear'],
+  [11,6,'shoe','lens'], [3,11,'house','gear'], [12,11,'robot','turbine'], [0,7,'buoy','seed'], [8,12,'car','lens'],
+];
+const DRIFT = ['tire', 'can', 'bottle', 'buoy', 'ball', 'crate', 'duck'];
+const QUESTS = [
+  { t: '清扫岸边的漂流木箱', p: s => [Math.min(1, s.stats.cleared), 1], rw: { w: 20, m: 10 } },
+  { t: '点岛边的海面，填出第一块陆地', p: s => [Math.min(1, s.stats.filled), 1], rw: { w: 30, m: 20 } },
+  { t: '点空地，建造一座工棚', p: s => [Math.min(1, count('shelter')), 1], rw: { m: 20, p: 10 } },
+  { t: '用齿轮组建造回收站', p: s => [Math.min(1, count('recycler')), 1], rw: { w: 30, p: 20 } },
+  { t: '清扫搁浅的帆船，挖出涡轮', p: s => [Math.min(1, s.stats.found.turbine), 1], rw: { m: 30 } },
+  { t: '建造风力发电机', p: s => [Math.min(1, count('windmill')), 1], rw: { w: 30, g: 20 } },
+  { t: '把陆地扩张到 14 格', p: s => [Math.min(14, landCount()), 14], rw: { w: 40, m: 40 } },
+  { t: '找到透镜，建造灯塔', p: s => [Math.min(1, count('lighthouse')), 1], rw: { p: 40, g: 20 } },
+  { t: '去新海域找种子箱，建造农田', p: s => [Math.min(1, count('farm')), 1], rw: { w: 60, m: 40 } },
+  { t: '把陆地扩张到 24 格', p: s => [Math.min(24, landCount()), 24], rw: { w: 80, m: 80, p: 40 } },
+  { t: '把任意建筑升到 3 级', p: s => [Math.min(3, maxLv()), 3], rw: { g: 60, p: 60 } },
+  { t: '把陆地扩张到 40 格', p: s => [Math.min(40, landCount()), 40], rw: { w: 200, m: 200, p: 100, g: 100 } },
+];
+
+/* ---------- utils ---------- */
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const key = (i, j) => i + ',' + j;
+const hash = (i, j) => { let h = (i * 374761393 + j * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function rng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const easeOutBack = t => { t = clamp(t, 0, 1); const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const shadeCache = new Map();
+function shade(hex, f) {
+  const k = hex + f; let v = shadeCache.get(k); if (v) return v;
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, gg = n >> 8 & 255, b = n & 255;
+  const t = f < 0 ? 0 : 255, a = Math.abs(f);
+  r = Math.round(r + (t - r) * a); gg = Math.round(gg + (t - gg) * a); b = Math.round(b + (t - b) * a);
+  v = `rgb(${r},${gg},${b})`; shadeCache.set(k, v); return v;
+}
+function mix(h1, h2, t) {
+  const a = parseInt(h1.slice(1), 16), b = parseInt(h2.slice(1), 16);
+  const c = k => Math.round(lerp(a >> k & 255, b >> k & 255, t));
+  return `rgb(${c(16)},${c(8)},${c(0)})`;
+}
+const fmt = n => n >= 10000 ? (n / 10000).toFixed(1) + '万' : String(Math.floor(n));
+
+/* ---------- part icons (shared by DOM + canvas) ---------- */
+const circ = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+const ICON = (() => {
+  let gear = '';
+  for (let k = 0; k < 16; k++) {
+    const r = k % 2 ? 7.6 : 10.4, a0 = (k - 0.32) * Math.PI / 8, a1 = (k + 0.32) * Math.PI / 8;
+    gear += `${k ? 'L' : 'M'}${(12 + r * Math.cos(a0)).toFixed(2)} ${(12 + r * Math.sin(a0)).toFixed(2)}L${(12 + r * Math.cos(a1)).toFixed(2)} ${(12 + r * Math.sin(a1)).toFixed(2)}`;
+  }
+  gear += 'Z' + circ(12, 12, 3.2);
+  let blades = '';
+  for (let k = 0; k < 3; k++) {
+    const a = k * Math.PI * 2 / 3 - Math.PI / 2, P = (r, d) => `${(12 + r * Math.cos(a + d)).toFixed(2)} ${(12 + r * Math.sin(a + d)).toFixed(2)}`;
+    blades += `M${P(1.5, -1.2)}L${P(6, -0.5)}L${P(11, 0.08)}L${P(6.5, 0.42)}L${P(1.5, 1.2)}Z`;
+  }
+  return {
+    gear:    [{ d: gear, f: '#c9d3dd' }, { d: circ(12, 12, 5.4) + circ(12, 12, 3.2), f: '#8e9aa6' }],
+    turbine: [{ d: blades, f: '#e8eef3' }, { d: circ(12, 12, 2.8), f: '#ffc93c' }],
+    lens:    [{ d: circ(12, 12, 10), f: '#b58a45' }, { d: circ(12, 12, 7.6), f: '#8fdcff' }, { d: circ(9.4, 9.2, 2.2), f: '#eafaff' }],
+    seed:    [{ d: 'M4.5 13h15v7.5h-15Z', f: '#b98a5a' }, { d: 'M4.5 13h15v2.4h-15Z', f: '#d7a877' }, { d: 'M11.2 7.5h1.6V13h-1.6Z', f: '#3f9b4c' },
+               { d: 'M12 9.5C8 9.5 5.5 6.8 5.5 3.8 9.5 3.8 12 6.2 12 9.5Z', f: '#59c36a' }, { d: 'M12 9.5c4 0 6.5-2.7 6.5-5.7-4 0-6.5 2.4-6.5 5.7Z', f: '#7fdc8a' }],
+  };
+})();
+const partSVG = id => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[id].map(p => `<path d="${p.d}" fill="${p.f}" fill-rule="evenodd" stroke="#10303c" stroke-width=".9" stroke-linejoin="round"/>`).join('')}</svg>`;
+const P2D = {};
+function drawPart(c, id, x, y, size, alpha = 1) {
+  if (!P2D[id]) P2D[id] = ICON[id].map(p => ({ path: new Path2D(p.d), f: p.f }));
+  c.save(); c.translate(x - size / 2, y - size / 2); c.scale(size / 24, size / 24); c.globalAlpha = alpha;
+  c.lineJoin = 'round'; c.lineWidth = 0.9; c.strokeStyle = '#10303c';
+  for (const p of P2D[id]) { c.fillStyle = p.f; c.fill(p.path, 'evenodd'); c.stroke(p.path); }
+  c.restore();
+}
+
+/* ---------- state ---------- */
+let S;
+const SAVE = 'shihuang-island-v2';
+function newState() {
+  const s = { v: 1, res: { w: 20, m: 10, p: 6, g: 0 }, parts: { gear: 0, turbine: 0, lens: 0, seed: 0 }, land: {}, piles: [], fills: [],
+    quest: 0, stats: { cleared: 0, filled: 0, found: { gear: 0, turbine: 0, lens: 0, seed: 0 } }, pid: 100, last: Date.now(), drift: 40, acc: 0, mute: false, tip: 0 };
+  for (let i = C - 1; i <= C + 1; i++) for (let j = C - 1; j <= C + 1; j++) s.land[key(i, j)] = { b: null };
+  s.land[key(C, C)].b = { t: 'hq', lv: 1 };
+  FIXED.forEach((f, n) => s.piles.push({ id: n + 1, i: f[0], j: f[1], pic: f[2], part: f[3] }));
+  return s;
+}
+function load() {
+  try { const raw = localStorage.getItem(SAVE); if (raw) { const s = JSON.parse(raw); if (s && s.v === 1 && s.land) return s; } } catch (e) {}
+  return null;
+}
+function save() { S.last = Date.now(); try { localStorage.setItem(SAVE, JSON.stringify(S)); } catch (e) {} }
+
+const inMap = (i, j) => i >= 0 && j >= 0 && i < N && j < N;
+const isLand = (i, j) => !!S.land[key(i, j)];
+const pileAt = (i, j) => S.piles.find(p => p.i === i && p.j === j);
+const fillAt = (i, j) => S.fills.find(f => f.i === i && f.j === j);
+const ring = (i, j) => Math.max(Math.abs(i - C), Math.abs(j - C));
+const count = t => { let n = 0; for (const k in S.land) if (S.land[k].b && S.land[k].b.t === t) n++; return n; };
+const lvSum = t => { let n = 0; for (const k in S.land) if (S.land[k].b && S.land[k].b.t === t) n += S.land[k].b.lv; return n; };
+const maxLv = () => { let n = 0; for (const k in S.land) if (S.land[k].b && S.land[k].b.t !== 'hq') n = Math.max(n, S.land[k].b.lv); return n; };
+const landCount = () => Object.keys(S.land).length;
+const radius = () => 3 + lvSum('lighthouse');
+const visible = (i, j) => inMap(i, j) && ring(i, j) <= radius();
+const coast = (i, j) => isLand(i + 1, j) || isLand(i - 1, j) || isLand(i, j + 1) || isLand(i, j - 1);
+const fillSlots = () => 1 + count('shelter');
+const fillSpeed = () => 1 + 0.25 * lvSum('shelter');
+const prodRate = () => lvSum('recycler') * 0.2 * (1 + 0.5 * lvSum('windmill'));   // materials per second
+const farmBonus = () => 0.2 * lvSum('farm');
+function fillCost() {
+  const k = landCount() + S.fills.length - 9, c = { w: 16 + 4 * k, m: 8 + 3 * k };
+  if (k >= 3) c.p = 2 * k; if (k >= 8) c.g = 2 * k - 10;
+  return c;
+}
+const fillTime = () => Math.min(40, 6 + 1.2 * (landCount() - 9)) / fillSpeed();
+const scale = (cost, m) => { const o = {}; for (const k in cost) o[k] = Math.round(cost[k] * m / 5) * 5; return o; };
+const buildCost = t => scale(BLD[t].cost, Math.pow(1.5, count(t)));
+const upCost = b => scale(BLD[b.t].cost, b.lv === 1 ? 2.5 : 6);
+const afford = (cost, part) => RK.every(k => (S.res[k] || 0) >= (cost[k] || 0)) && (!part || S.parts[part] > 0);
+function pay(cost, part) { for (const k in cost) S.res[k] -= cost[k]; if (part) S.parts[part]--; }
+function gain(o) { for (const k in o) { S.res[k] += o[k]; bump(k); } }
+
+/* ---------- pictures ---------- */
+const picRows = p => PICS[p.pic].rows;
+const picName = p => PICS[p.pic].name;
+function picStats(p) { const o = { w: 0, m: 0, p: 0, g: 0, n: 0 }; for (const row of picRows(p)) for (const ch of row) if (ch !== '.') { o[PAL[ch].r]++; o.n++; } return o; }
+function picThumb(p) {
+  const rows = picRows(p), c = document.createElement('canvas'), s = 8, pad = 6, n = Math.max(rows.length, rows[0].length);
+  c.width = c.height = n * s + pad * 2; const x = c.getContext('2d');
+  const ox = pad + (n - rows[0].length) * s / 2, oy = pad + (n - rows.length) * s / 2;
+  rows.forEach((row, y) => [...row].forEach((ch, xx) => { if (ch === '.') return; const col = PAL[ch].col; x.fillStyle = shade(col, -0.3); x.fillRect(ox + xx * s, oy + y * s, s, s); x.fillStyle = col; x.fillRect(ox + xx * s, oy + y * s, s - 1, s - 2); }));
+  return c.toDataURL();
+}
+// the heap on the map: the picture built out of voxels, so you can tell what it is from the island
+const SPR = {}, PS = 3.4, SPRK = 4;
+function pileSprite(pic) {
+  if (SPR[pic]) return SPR[pic];
+  const rows = PICS[pic].rows, h = rows.length, w = rows[0].length, ps = PS * SPRK, dep = ps * 0.5;
+  const c = document.createElement('canvas'); c.width = Math.ceil(w * ps + dep + 2); c.height = Math.ceil(h * ps + dep + 2);
+  const x = c.getContext('2d'), at = (cx, cy) => cy >= 0 && cy < h && cx >= 0 && cx < w && rows[cy][cx] !== '.';
+  const q = (pts, col) => { x.fillStyle = col; x.beginPath(); pts.forEach(([a, b], k) => k ? x.lineTo(a, b) : x.moveTo(a, b)); x.closePath(); x.fill(); };
+  for (let cy = 0; cy < h; cy++) for (let cx = 0; cx < w; cx++) {
+    if (!at(cx, cy)) continue; const col = PAL[rows[cy][cx]].col, px = cx * ps, py = cy * ps + dep;
+    if (!at(cx, cy - 1)) q([[px, py], [px + ps, py], [px + ps + dep, py - dep], [px + dep, py - dep]], shade(col, 0.22));
+    if (!at(cx + 1, cy)) q([[px + ps, py], [px + ps + dep, py - dep], [px + ps + dep, py + ps - dep], [px + ps, py + ps]], shade(col, -0.32));
+  }
+  for (let cy = 0; cy < h; cy++) for (let cx = 0; cx < w; cx++) {
+    if (!at(cx, cy)) continue; const col = PAL[rows[cy][cx]].col, px = cx * ps, py = cy * ps + dep;
+    x.fillStyle = shade(col, -0.2); x.fillRect(px, py, ps + 0.5, ps + 0.5);
+    x.fillStyle = col; x.fillRect(px + 1, py + 1, ps - 2, ps - 2);
+    x.fillStyle = 'rgba(255,255,255,.22)'; x.fillRect(px + 1, py + 1, ps - 2, ps * 0.22);
+  }
+  return SPR[pic] = { c, w: c.width / SPRK, h: c.height / SPRK };
+}
+
+/* ---------- audio ---------- */
+let AC = null;
+function ac() {
+  if (S.mute) return null;
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(f, d = 0.09, type = 'sine', v = 0.07, slide = 0, delay = 0) {
+  const a = ac(); if (!a) return;
+  const o = a.createOscillator(), gn = a.createGain(), t = a.currentTime + delay;
+  o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), t + d);
+  gn.gain.setValueAtTime(0.0001, t); gn.gain.linearRampToValueAtTime(v, t + 0.008); gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  o.connect(gn).connect(a.destination); o.start(t); o.stop(t + d + 0.02);
+}
+function splash(d = 0.5, v = 0.18) {
+  const a = ac(); if (!a) return;
+  const buf = a.createBuffer(1, a.sampleRate * d, a.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / ch.length, 2);
+  const src = a.createBufferSource(), f = a.createBiquadFilter(), gn = a.createGain();
+  src.buffer = buf; f.type = 'lowpass'; f.frequency.value = 1400; gn.gain.value = v;
+  src.connect(f).connect(gn).connect(a.destination); src.start();
+}
+const sfx = {
+  tap: () => tone(420, 0.06, 'triangle', 0.06, 120),
+  no: () => tone(180, 0.12, 'square', 0.035, -60),
+  pick: n => tone(520 + Math.min(n, 14) * 38, 0.07, 'sine', 0.06, 160),
+  drop: () => tone(880, 0.05, 'triangle', 0.035, 200),
+  build: () => { tone(330, 0.1, 'triangle', 0.08); tone(495, 0.14, 'triangle', 0.08, 0, 0.09); },
+  win: () => [523, 659, 784, 1047].forEach((f, k) => tone(f, 0.22, 'triangle', 0.08, 0, k * 0.09)),
+  land: () => { tone(90, 0.35, 'sine', 0.22, -40); splash(); [392, 523, 659].forEach((f, k) => tone(f, 0.25, 'sine', 0.06, 0, 0.25 + k * 0.08)); },
+  claim: () => { tone(660, 0.1, 'triangle', 0.07); tone(990, 0.16, 'triangle', 0.07, 0, 0.08); },
+};
+
+/* ---------- iso drawing helpers ---------- */
+const iso = (i, j, z = 0) => [(i - j) * TW, (i + j) * TH - z];
+function quad(a, b, c, d, col) { g.fillStyle = col; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.lineTo(d[0], d[1]); g.closePath(); g.fill(); }
+function box(o, u, v, w, d, z, h, col) {
+  const P = (a, b, c) => [o[0] + (a - b) * TW, o[1] + (a + b) * TH - c];
+  quad(P(u, v + d, z + h), P(u + w, v + d, z + h), P(u + w, v + d, z), P(u, v + d, z), shade(col, -0.14));
+  quad(P(u + w, v, z + h), P(u + w, v + d, z + h), P(u + w, v + d, z), P(u + w, v, z), shade(col, -0.3));
+  quad(P(u, v, z + h), P(u + w, v, z + h), P(u + w, v + d, z + h), P(u, v + d, z + h), shade(col, 0.1));
+}
+const pt = (o, u, v, z) => [o[0] + (u - v) * TW, o[1] + (u + v) * TH - z];
+function tri(a, b, c, col) { g.fillStyle = col; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.closePath(); g.fill(); }
+// pitched roof whose ridge runs along u
+function gable(o, u, v, w, d, z, h, col, wall) {
+  const P = (a, b, c) => pt(o, a, b, c), m = v + d / 2;
+  quad(P(u, v, z), P(u + w, v, z), P(u + w, m, z + h), P(u, m, z + h), shade(col, 0.16));
+  tri(P(u + w, v, z), P(u + w, v + d, z), P(u + w, m, z + h), shade(wall, -0.3));
+  quad(P(u, v + d, z), P(u + w, v + d, z), P(u + w, m, z + h), P(u, m, z + h), shade(col, -0.06));
+  const r0 = P(u, m, z + h), r1 = P(u + w, m, z + h); g.strokeStyle = shade(col, 0.35); g.lineWidth = 1.4; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(r0[0], r0[1]); g.lineTo(r1[0], r1[1]); g.stroke();
+}
+const faceF = (o, u0, u1, v, z0, z1, col) => quad(pt(o, u0, v, z1), pt(o, u1, v, z1), pt(o, u1, v, z0), pt(o, u0, v, z0), col);
+const faceR = (o, u, v0, v1, z0, z1, col) => quad(pt(o, u, v0, z1), pt(o, u, v1, z1), pt(o, u, v1, z0), pt(o, u, v0, z0), col);
+function winF(o, u0, u1, v, z0, z1) { faceF(o, u0 - .02, u1 + .02, v, z0 - 1, z1 + 1, '#5b4632'); faceF(o, u0, u1, v, z0, z1, '#ffe9a8'); }
+function winR(o, u, v0, v1, z0, z1) { faceR(o, u, v0 - .02, v1 + .02, z0 - 1, z1 + 1, '#4a3a2a'); faceR(o, u, v0, v1, z0, z1, '#f0d27e'); }
+function blob(x, y, r, col) { g.fillStyle = shade(col, -0.28); g.beginPath(); g.arc(x + r * .15, y + r * .2, r, 0, 7); g.fill(); g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+function tree(o, u, v, z, s, t, hv) {
+  const p = pt(o, u, v, z), sw = Math.sin(t * 1.3 + hv * 9) * 0.6;
+  g.fillStyle = 'rgba(30,70,20,.22)'; g.beginPath(); g.ellipse(p[0] + 4, p[1] + 1, 10 * s, 5 * s, 0, 0, 7); g.fill();
+  box(o, u - .035, v - .035, .07, .07, z, 8 * s, '#7a5232');
+  const c = pt(o, u, v, z + 14 * s);
+  blob(c[0] + sw, c[1], 9 * s, '#3f9b4c'); blob(c[0] - 3 * s + sw, c[1] - 5 * s, 7 * s, '#4fb35c'); blob(c[0] + 2.5 * s + sw, c[1] - 9 * s, 5 * s, '#66c870');
+}
+function palm(o, u, v, z, t, hv) {
+  const b = pt(o, u, v, z), tx = b[0] + 7, ty = b[1] - 22, sw = Math.sin(t * 1.4 + hv * 7) * 0.07;
+  g.fillStyle = 'rgba(30,70,20,.2)'; g.beginPath(); g.ellipse(b[0] + 6, b[1], 9, 4, 0, 0, 7); g.fill();
+  g.strokeStyle = '#9a6a3e'; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath(); g.moveTo(b[0], b[1]); g.quadraticCurveTo(b[0] + 1, b[1] - 13, tx, ty); g.stroke();
+  for (let k = 0; k < 6; k++) {
+    const a = k * 1.05 + sw; g.strokeStyle = k % 2 ? '#3f9b4c' : '#5cc265'; g.lineWidth = 3.4;
+    g.beginPath(); g.moveTo(tx, ty); g.quadraticCurveTo(tx + Math.cos(a) * 8, ty + Math.sin(a) * 4 - 6, tx + Math.cos(a) * 14, ty + Math.sin(a) * 7 + 3); g.stroke();
+  }
+  g.fillStyle = '#7a5232'; g.beginPath(); g.arc(tx - 1.5, ty + 2, 1.8, 0, 7); g.arc(tx + 1.8, ty + 2.4, 1.8, 0, 7); g.fill();
+}
+
+function drawBuilding(o, z, b, t) {
+  const lv = b.lv;
+  switch (b.t) {
+    case 'hq': {
+      box(o, .1, .16, .64, .64, z, 1.5, '#a87a4e');
+      gable(o, .14, .2, .56, .56, z + 1.5, 19, '#efe3c2', '#e6d6b0');
+      tri(pt(o, .70, .40, z + 1.5), pt(o, .70, .56, z + 1.5), pt(o, .70, .48, z + 12), '#5a3d25');
+      box(o, .76, .14, .14, .14, z, 7, '#c98a4b'); box(o, .78, .16, .1, .1, z + 7, 6, '#d39a5a');
+      box(o, .12, .84, .1, .1, z, 9, '#4fb3e8'); box(o, .12, .84, .1, .1, z + 3, 1.5, '#2f7fae');
+      box(o, .86, .42, .035, .035, z, 30, '#8a97a3');
+      const p = pt(o, .88, .44, z + 30), wv = Math.sin(t * 3) * 2;
+      g.fillStyle = '#ffc93c'; g.beginPath(); g.moveTo(p[0], p[1]); g.quadraticCurveTo(p[0] + 8, p[1] + 1 + wv, p[0] + 16, p[1] + 3 + wv); g.lineTo(p[0], p[1] + 10); g.closePath(); g.fill();
+      const f = pt(o, .8, .82, z);
+      g.fillStyle = 'rgba(255,170,60,.25)'; g.beginPath(); g.ellipse(f[0], f[1], 13, 6.5, 0, 0, 7); g.fill();
+      g.fillStyle = '#6b4a2e'; g.fillRect(f[0] - 5, f[1] - 2, 10, 3);
+      g.fillStyle = `rgba(255,${150 + Math.sin(t * 9) * 40 | 0},60,.95)`; g.beginPath(); g.moveTo(f[0] - 4, f[1] - 1); g.lineTo(f[0], f[1] - 10 - Math.sin(t * 11) * 2); g.lineTo(f[0] + 4, f[1] - 1); g.fill();
+      g.fillStyle = '#ffe27a'; g.beginPath(); g.moveTo(f[0] - 2, f[1] - 1); g.lineTo(f[0], f[1] - 5 - Math.sin(t * 13)); g.lineTo(f[0] + 2, f[1] - 1); g.fill();
+      break;
+    }
+    case 'shelter': {
+      box(o, .2, .24, .56, .52, z, 11, '#d4a46a');
+      g.strokeStyle = 'rgba(90,55,25,.35)'; g.lineWidth = 1;
+      for (let k = 1; k < 3; k++) { const a = pt(o, .2, .76, z + k * 3.7), c = pt(o, .76, .76, z + k * 3.7); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(c[0], c[1]); g.stroke(); }
+      faceF(o, .42, .54, .76, z, z + 8, '#6b4a2e'); winR(o, .76, .38, .6, z + 4, z + 8);
+      gable(o, .13, .18, .7, .64, z + 11, 10, '#d9603b', '#d4a46a');
+      if (lv >= 2) { box(o, .58, .62, .08, .08, z + 13, 8, '#8a6a52'); box(o, .57, .61, .1, .1, z + 21, 2, '#6b4a2e'); }
+      if (lv >= 3) { box(o, .86, .86, .03, .03, z, 13, '#5b4632'); const p = pt(o, .875, .875, z + 15); g.fillStyle = 'rgba(255,226,122,.35)'; g.beginPath(); g.arc(p[0], p[1], 7, 0, 7); g.fill(); g.fillStyle = '#ffe27a'; g.beginPath(); g.arc(p[0], p[1], 3, 0, 7); g.fill(); }
+      break;
+    }
+    case 'recycler': {
+      box(o, .08, .18, .56, .62, z, 13, '#b9c4cc');
+      faceF(o, .08, .64, .8, z + 9, z + 11, '#4fbf73');
+      faceF(o, .26, .42, .8, z + 2, z + 7.5, '#4fbf73'); faceF(o, .3, .38, .8, z + 3.5, z + 6, '#e8fff0');
+      faceR(o, .64, .32, .64, z, z + 9, '#55626c'); faceR(o, .64, .32, .64, z + 3, z + 3.8, '#46525b'); faceR(o, .64, .32, .64, z + 6, z + 6.8, '#46525b');
+      gable(o, .08, .18, .56, .31, z + 13, 6, '#8a98a3', '#b9c4cc'); gable(o, .08, .49, .56, .31, z + 13, 6, '#8a98a3', '#b9c4cc');
+      const ch = 9 + 3 * lv; box(o, .14, .22, .1, .1, z + 13, ch, '#7c8a95'); box(o, .135, .215, .11, .11, z + 10 + ch, 3, '#e2533f');
+      const sp = pt(o, .19, .27, z + 13 + ch);
+      for (let k = 0; k < 3; k++) { const ph = (t * 0.45 + k / 3) % 1; g.fillStyle = `rgba(240,248,250,${0.55 * (1 - ph)})`; g.beginPath(); g.arc(sp[0] + Math.sin(ph * 5 + k) * 3, sp[1] - ph * 22, 2.5 + ph * 4, 0, 7); g.fill(); }
+      box(o, .64, .42, .26, .1, z, 3, '#4a5660');
+      const cubes = [0, 1, 2].map(k => ({ ph: (t * 0.32 * (1 + 0.3 * lv) + k / 3) % 1, c: [RES.w.col, RES.p.col, RES.m.col][k] })).sort((a, c) => a.ph - c.ph);
+      for (const q of cubes) box(o, .64 + q.ph * .2, .435, .07, .07, z + 3, 4.5, q.c);
+      box(o, .78, .6, .16, .2, z, 9, '#4fbf73'); quad(pt(o, .8, .62, z + 9), pt(o, .92, .62, z + 9), pt(o, .92, .78, z + 9), pt(o, .8, .78, z + 9), '#2f7a48');
+      break;
+    }
+    case 'windmill': {
+      const th = 24 + 4 * lv;
+      box(o, .28, .28, .44, .44, z, 8, '#d4a46a'); faceF(o, .44, .56, .72, z, z + 6, '#6b4a2e');
+      gable(o, .25, .25, .5, .5, z + 8, 6, '#5d7f99', '#d4a46a');
+      for (let k = 0; k < 3; k++) { const ins = .41 + k * .02; box(o, ins, ins, 1 - 2 * ins, 1 - 2 * ins, z + 10 + k * th / 3, th / 3, k % 2 ? '#e3eaef' : '#f4f8fa'); }
+      box(o, .45, .44, .1, .2, z + 10 + th, 5, '#cfd8de');
+      const hb = pt(o, .5, .66, z + 12.5 + th), R = 16 + 2 * lv;
+      g.lineCap = 'round';
+      for (let k = 0; k < 3; k++) {
+        const a = t * (1.6 + 0.3 * lv) + k * Math.PI * 2 / 3, ex = hb[0] + Math.cos(a) * R, ey = hb[1] + Math.sin(a) * R;
+        g.strokeStyle = '#27505e'; g.lineWidth = 6; g.beginPath(); g.moveTo(hb[0], hb[1]); g.lineTo(ex, ey); g.stroke();
+        g.strokeStyle = '#ffffff'; g.lineWidth = 4; g.beginPath(); g.moveTo(hb[0], hb[1]); g.lineTo(ex, ey); g.stroke();
+      }
+      g.fillStyle = '#ffc93c'; g.beginPath(); g.arc(hb[0], hb[1], 3.4, 0, 7); g.fill();
+      break;
+    }
+    case 'farm': {
+      box(o, .06, .06, .88, .88, z, 1.5, '#7a4e30');
+      const n = 2 + lv, wd = .8 / n;
+      for (let a = 0; a < n; a++) {
+        box(o, .1 + a * wd + .015, .1, wd - .05, .8, z + 1.5, 1.8, '#9a6440');
+        for (let c = 0; c < 4; c++) {
+          const sw = Math.sin(t * 2 + a + c) * 0.6, wheat = lv >= 2 && (a + c) % 3 === 0, u = .1 + a * wd + wd / 2 - .04, v = .16 + c * .19;
+          box(o, u, v, .08, .08, z + 3.3, 4 + lv + sw, wheat ? '#f2c94c' : '#58c060');
+          if (!wheat) box(o, u + .015, v + .015, .05, .05, z + 7.3 + lv + sw, 2, '#7fdc8a');
+        }
+      }
+      for (let k = 0; k < 6; k++) box(o, .04 + k * .18, .93, .03, .03, z, 7, '#d4a46a');
+      for (let k = 0; k < 6; k++) box(o, .93, .04 + k * .18, .03, .03, z, 7, '#d4a46a');
+      g.strokeStyle = '#c4935a'; g.lineWidth = 1.3;
+      for (const zz of [3, 5.5]) { const a = pt(o, .05, .945, z + zz), c = pt(o, .945, .945, z + zz), d = pt(o, .945, .05, z + zz); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(c[0], c[1]); g.lineTo(d[0], d[1]); g.stroke(); }
+      break;
+    }
+    case 'lighthouse': {
+      box(o, .2, .2, .6, .6, z, 3, '#9aa1a6');
+      let zz = z + 3; const cols = ['#f1f1ee', '#e2533f', '#f1f1ee', '#e2533f', '#f1f1ee'];
+      for (let k = 0; k < 2 + lv; k++) { const ins = .29 + k * .025; box(o, ins, ins, 1 - 2 * ins, 1 - 2 * ins, zz, 9, cols[k]); zz += 9; }
+      winF(o, .46, .54, 1 - (.29 + .025), z + 15, z + 19);
+      box(o, .3, .3, .4, .4, zz, 2, '#3d4652');
+      box(o, .38, .38, .24, .24, zz + 2, 7, '#ffe27a'); gable(o, .33, .33, .34, .34, zz + 9, 6, '#e2533f', '#e2533f');
+      const p = pt(o, .5, .5, zz + 5), a = t * 0.9;
+      g.fillStyle = 'rgba(255,236,150,.2)'; g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(p[0] + Math.cos(a - .22) * 90, p[1] + Math.sin(a - .22) * 45); g.lineTo(p[0] + Math.cos(a + .22) * 90, p[1] + Math.sin(a + .22) * 45); g.closePath(); g.fill();
+      g.fillStyle = 'rgba(255,240,170,.35)'; g.beginPath(); g.arc(p[0], p[1], 9, 0, 7); g.fill();
+      break;
+    }
+  }
+  if (b.t !== 'hq') {
+    const p = pt(o, .5, 1, z);
+    for (let k = 0; k < lv; k++) { const x = p[0] + (k - (lv - 1) / 2) * 7, y = p[1] - 5; g.fillStyle = '#10303c'; g.beginPath(); g.arc(x, y, 3.2, 0, 7); g.fill(); g.fillStyle = '#ffc93c'; g.beginPath(); g.arc(x, y, 2.2, 0, 7); g.fill(); }
+  }
+}
+const iconCache = {};
+function buildingIcon(t, lv = 1) {
+  const k = t + lv; if (iconCache[k]) return iconCache[k];
+  const c = document.createElement('canvas'); c.width = 160; c.height = 180; const old = g; g = c.getContext('2d');
+  g.scale(2, 2); const o = [40, 44];
+  quad(pt(o, 0, 0, 0), pt(o, 1, 0, 0), pt(o, 1, 1, 0), pt(o, 0, 1, 0), '#74bd54');
+  drawBuilding(o, 0, { t, lv }, 0.6); g = old;
+  return iconCache[k] = c.toDataURL();
+}
+
+/* ---------- world view ---------- */
+const cam = { x: 0, y: 13 * TH, s: 1 };
+let sel = null, shake = 0, fxP = [], fxR = [], fxT = [], walkers = [];
+const toScreen = (wx, wy) => [(wx - cam.x) * cam.s + W / 2, (wy - cam.y) * cam.s + H / 2];
+
+function rhomb(x, y, grow = 0) { g.beginPath(); g.moveTo(x, y - grow); g.lineTo(x + TW + grow * 2, y + TH); g.lineTo(x, y + 2 * TH + grow); g.lineTo(x - TW - grow * 2, y + TH); g.closePath(); }
+
+function drawLandTile(i, j, L, now, t) {
+  const age = L.born ? (now - L.born) / 1000 : 9, z = age < 0.7 ? LH * easeOutBack(age / 0.7) : LH;
+  const [x, y] = iso(i, j), o = [x, y], gr = clamp((age - 0.45) / 0.7, 0, 1), hv = hash(i, j);
+  const grass = ['#7cc45a', '#76be55', '#82c960'][hv * 3 | 0], top = gr >= 1 ? grass : mix('#c9ad7c', grass, gr);
+  const open = (a, b) => { const n = S.land[key(a, b)]; return !n || (n.born && now - n.born < 800); };
+  const wS = !isLand(i, j + 1), wE = !isLand(i + 1, j), wN = !isLand(i, j - 1), wW = !isLand(i - 1, j), zr = z * 0.5;
+  if (open(i, j + 1)) {
+    quad([x - TW, y + TH - z], [x, y + 2 * TH - z], [x, y + 2 * TH + 1], [x - TW, y + TH + 1], '#958a78');
+    quad([x - TW, y + TH - z], [x, y + 2 * TH - z], [x, y + 2 * TH - zr], [x - TW, y + TH - zr], '#b07f50');
+  }
+  if (open(i + 1, j)) {
+    quad([x, y + 2 * TH - z], [x + TW, y + TH - z], [x + TW, y + TH + 1], [x, y + 2 * TH + 1], '#7a7062');
+    quad([x, y + 2 * TH - z], [x + TW, y + TH - z], [x + TW, y + TH - zr], [x, y + 2 * TH - zr], '#8f6542');
+  }
+  const fa = 0.55 + 0.3 * Math.sin(t * 2 + i + j);
+  g.strokeStyle = `rgba(255,255,255,${fa})`; g.lineWidth = 2.2; g.lineCap = 'round';
+  if (wS) { g.beginPath(); g.moveTo(x - TW, y + TH + 2); g.lineTo(x, y + 2 * TH + 2); g.stroke(); }
+  if (wE) { g.beginPath(); g.moveTo(x, y + 2 * TH + 2); g.lineTo(x + TW, y + TH + 2); g.stroke(); }
+  g.fillStyle = top; rhomb(x, y - z); g.fill();
+  // beach along every edge that meets the sea
+  const sd = '#efdca5', sw = .2; g.globalAlpha = gr;
+  if (wN) quad(pt(o, 0, 0, z), pt(o, 1, 0, z), pt(o, 1, sw, z), pt(o, 0, sw, z), sd);
+  if (wW) quad(pt(o, 0, 0, z), pt(o, sw, 0, z), pt(o, sw, 1, z), pt(o, 0, 1, z), sd);
+  if (wE) quad(pt(o, 1 - sw, 0, z), pt(o, 1, 0, z), pt(o, 1, 1, z), pt(o, 1 - sw, 1, z), sd);
+  if (wS) quad(pt(o, 0, 1 - sw, z), pt(o, 1, 1 - sw, z), pt(o, 1, 1, z), pt(o, 0, 1, z), sd);
+  g.globalAlpha = 1;
+  if (age < 1.15) {       // the salvaged blocks it was built from, fading into grass
+    g.globalAlpha = 1 - gr;
+    for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) {
+      const col = RES[RK[hash(i * 3 + a, j * 3 + c) * 4 | 0]].col;
+      quad(pt(o, a / 3, c / 3, z), pt(o, (a + 1) / 3, c / 3, z), pt(o, (a + 1) / 3, (c + 1) / 3, z), pt(o, a / 3, (c + 1) / 3, z), shade(col, (a + c) % 2 ? 0.05 : -0.05));
+    }
+    g.globalAlpha = 1;
+  }
+  if (L.b) {
+    const sp = pt(o, .58, .62, z); g.fillStyle = 'rgba(25,70,25,.24)'; g.beginPath(); g.ellipse(sp[0], sp[1], 25, 12, 0, 0, 7); g.fill();
+    drawBuilding(o, z, L.b, t); return;
+  }
+  const dp = clamp((age - 0.9) / 0.3, 0, 1); if (dp <= 0) return;
+  const kind = hv * 12 | 0, beach = wS || wE || wN || wW;
+  g.strokeStyle = '#5fa944'; g.lineWidth = 1.3; g.lineCap = 'round';
+  for (let k = 0; k < 3; k++) { const p = pt(o, .3 + hash(i + k, j) * .4, .3 + hash(i, j + k) * .4, z); g.beginPath(); g.moveTo(p[0] - 2, p[1]); g.lineTo(p[0] - 3, p[1] - 3); g.moveTo(p[0] + 1, p[1]); g.lineTo(p[0] + 2, p[1] - 3.5); g.stroke(); }
+  if (kind === 0 || kind === 5 || kind === 9) tree(o, .45 + hv * .1, .5, z, dp, t, hv);
+  else if (kind === 8 || kind === 10) beach ? palm(o, .5, .5, z, t, hv) : tree(o, .5, .45, z, dp, t, hv);
+  else if (kind === 1) { const p = pt(o, .55, .4, z); blob(p[0], p[1] - 3 * dp, 5 * dp, '#4fb35c'); blob(p[0] + 5, p[1] - 1, 3.5 * dp, '#5fc06a'); }
+  else if (kind === 2 || kind === 7) { const p = pt(o, .3 + hv * .4, .6, z); g.fillStyle = '#5aa843'; g.fillRect(p[0] - 1, p[1] - 4, 2, 4); g.fillStyle = kind === 2 ? '#ffe27a' : '#ff9fb2'; g.beginPath(); g.arc(p[0], p[1] - 5, 2.4 * dp, 0, 7); g.fill(); }
+  else if (kind === 4) { box(o, .5, .52, .16, .12, z, 4 * dp, '#a3aab0'); box(o, .62, .44, .08, .08, z, 2.5 * dp, '#b7bdc2'); }
+}
+function drawPile(p, now, t) {
+  const s = pileSprite(p.pic), [bx, by] = iso(p.i + .5, p.j + .5), hv = hash(p.i + 31, p.j + 17);
+  const bob = Math.sin(t * 1.5 + hv * 6) * 1.6, a = p.born ? clamp((now - p.born) / 900, 0, 1) : 1, rp = 0.5 + 0.5 * Math.sin(t * 2 + hv * 5);
+  g.globalAlpha = a;
+  g.fillStyle = 'rgba(6,50,70,.3)'; g.beginPath(); g.ellipse(bx, by + 2, s.w * .5 + 6, 10, 0, 0, 7); g.fill();
+  box(iso(p.i, p.j), .16, .16, .68, .68, bob - 2, 3, '#a8784a');
+  g.drawImage(s.c, bx - s.w / 2, by - s.h + 3 + bob, s.w, s.h);
+  g.strokeStyle = `rgba(255,255,255,${0.35 + 0.3 * rp})`; g.lineWidth = 1.6;
+  g.beginPath(); g.ellipse(bx, by + 2, s.w * .5 + 4 + rp * 3, 9 + rp, 0, 0.15, Math.PI - 0.15); g.stroke();
+  if (p.part) {
+    const q = [bx + s.w * .32, by - s.h + 4 + bob], sc = 0.7 + 0.3 * Math.sin(t * 4 + hv * 9);
+    g.fillStyle = '#fff6c9'; g.beginPath();
+    for (let k = 0; k < 8; k++) { const r = (k % 2 ? 1.6 : 6.5) * sc, an = k * Math.PI / 4; g.lineTo(q[0] + Math.cos(an) * r, q[1] + Math.sin(an) * r); }
+    g.fill();
+  }
+  g.globalAlpha = 1;
+}
+function drawFill(f, now, t) {
+  const o = iso(f.i, f.j), p = clamp((now - f.start) / (f.dur * 1000), 0, 1), n = Math.floor(p * 9.99);
+  for (const [u, v] of [[0, 0], [.94, 0], [0, .94], [.94, .94]]) box(o, u, v, .06, .06, 0, 9, '#8a5a3a');
+  for (let k = 0; k < Math.min(9, n); k++) { const a = k % 3, c = k / 3 | 0; box(o, .05 + a * .3, .05 + c * .3, .29, .29, 0, 6, RES[RK[hash(f.i * 3 + a, f.j * 3 + c) * 4 | 0]].col); }
+  if (n < 9) { const a = n % 3, c = n / 3 | 0, fr = (p * 9.99) % 1; g.globalAlpha = fr; box(o, .05 + a * .3, .05 + c * .3, .29, .29, (1 - fr) * 18, 6, RES[RK[hash(f.i * 3 + a, f.j * 3 + c) * 4 | 0]].col); g.globalAlpha = 1; }
+}
+function drawWalker(w, t) {
+  const p = iso(w.i, w.j, LH), b = Math.abs(Math.sin(t * 9 + w.ph)) * 1.5 * (w.wait > 0 ? 0 : 1);
+  g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.ellipse(p[0], p[1], 4, 2, 0, 0, 7); g.fill();
+  g.fillStyle = w.col; g.fillRect(p[0] - 2.5, p[1] - 8 - b, 5, 7);
+  g.fillStyle = '#f2c9a0'; g.beginPath(); g.arc(p[0], p[1] - 10.5 - b, 2.8, 0, 7); g.fill();
+  g.fillStyle = '#ffc93c'; g.beginPath(); g.arc(p[0], p[1] - 11.2 - b, 3.1, Math.PI, 0); g.fill();
+}
+
+function drawWorld(now, t) {
+  const sky = g.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#0f5672'); sky.addColorStop(1, '#0a3f55');
+  g.setTransform(DPR, 0, 0, DPR, 0, 0); g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  const sx = shake > 0 ? (Math.random() - 0.5) * 9 * shake : 0, sy = shake > 0 ? (Math.random() - 0.5) * 9 * shake : 0;
+  g.setTransform(DPR * cam.s, 0, 0, DPR * cam.s, DPR * (W / 2 - cam.x * cam.s + sx), DPR * (H / 2 - cam.y * cam.s + sy));
+  const R = radius(), can = afford(fillCost()) && S.fills.length < fillSlots();
+  // sea: shallow turquoise near the coast, deeper further out
+  const lk = Object.keys(S.land).map(k => k.split(',').map(Number));
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (isLand(i, j)) continue;
+    const [x, y] = iso(i, j), vis = ring(i, j) <= R, sh = coast(i, j);
+    let d = 99; for (const [a, b] of lk) { const q = Math.hypot(a - i, b - j); if (q < d) d = q; }
+    g.fillStyle = vis ? mix('#72d8e4', '#2394b6', clamp((d - 1) / 3.2, 0, 1)) : '#1a7697';
+    rhomb(x, y, 0.6); g.fill();
+    if (vis) {
+      const a = Math.max(0, Math.sin(t * 1.1 + i * 1.7 + j * 2.3)) * 0.4;
+      if (a > 0.02) { const ox = (hash(i, j) - 0.5) * 24; g.strokeStyle = `rgba(255,255,255,${a})`; g.lineWidth = 1.6; g.lineCap = 'round'; g.beginPath(); g.moveTo(x + ox - 7, y + TH + 2); g.lineTo(x + ox + 7, y + TH - 1.5); g.stroke(); }
+      if (sh && !pileAt(i, j) && !fillAt(i, j)) {
+        g.setLineDash([5, 5]); g.lineDashOffset = -t * 8; g.lineWidth = 1.5;
+        g.strokeStyle = can ? `rgba(255,214,90,${0.55 + 0.3 * Math.sin(t * 3)})` : 'rgba(255,255,255,.28)';
+        rhomb(x, y, -3); g.stroke(); g.setLineDash([]);
+      }
+    }
+  }
+  // ripples
+  for (const r of fxR) { const a = r.t / 1.2; g.strokeStyle = `rgba(255,255,255,${0.7 * (1 - a)})`; g.lineWidth = 2.5; g.beginPath(); g.ellipse(r.x, r.y, 20 + a * 70, 10 + a * 35, 0, 0, 7); g.stroke(); }
+  // ordered pass
+  const wk = {}; for (const w of walkers) { const k = key(Math.floor(w.i), Math.floor(w.j)); (wk[k] || (wk[k] = [])).push(w); }
+  for (let s = 0; s <= 2 * N - 2; s++) for (let i = Math.max(0, s - N + 1); i <= Math.min(N - 1, s); i++) {
+    const j = s - i, L = S.land[key(i, j)];
+    if (L) { drawLandTile(i, j, L, now, t); const ws = wk[key(i, j)]; if (ws) for (const w of ws) drawWalker(w, t); continue; }
+    const f = fillAt(i, j); if (f) { drawFill(f, now, t); continue; }
+    const p = pileAt(i, j); if (p && ring(i, j) <= R) drawPile(p, now, t);
+  }
+  if (sel) { const [x, y] = iso(sel[0], sel[1], isLand(sel[0], sel[1]) ? LH : 0); g.strokeStyle = '#ffc93c'; g.lineWidth = 3; rhomb(x, y, -1); g.stroke(); }
+  // particles
+  for (const p of fxP) { g.globalAlpha = clamp(p.life * 2, 0, 1); g.fillStyle = p.col; g.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s); } g.globalAlpha = 1;
+  // mist
+  for (let i = -2; i < N + 2; i++) for (let j = -2; j < N + 2; j++) {
+    const d = inMap(i, j) ? ring(i, j) - R : (i < -1 || j < -1 || i > N || j > N ? 0 : 2); if (d <= 0) continue;
+    const [x, y] = iso(i, j), hv = hash(i + 50, j + 50), dx = Math.sin(t * 0.25 + hv * 6) * 6;
+    g.fillStyle = `rgba(206,232,241,${d === 1 ? 0.32 : 0.78})`;
+    const k = d === 1 ? 0.7 : 1;
+    g.beginPath(); g.ellipse(x + dx, y + TH, 44 * k, 23 * k, 0, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(x + dx + 16 * (hv - .5), y + TH - 9, 26, 15, 0, 0, 7); g.fill();
+  }
+  // screen-space overlays
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+  vg.addColorStop(0, 'rgba(4,30,45,0)'); vg.addColorStop(1, 'rgba(4,30,45,.38)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  for (const f of S.fills) {
+    const w = iso(f.i, f.j), [x, y] = toScreen(w[0], w[1] - 22), p = clamp((now - f.start) / (f.dur * 1000), 0, 1);
+    g.fillStyle = '#0e3443'; g.beginPath(); g.arc(x, y, 15, 0, 7); g.fill();
+    g.strokeStyle = '#2b6c82'; g.lineWidth = 4; g.beginPath(); g.arc(x, y, 11, 0, 7); g.stroke();
+    g.strokeStyle = '#ffc93c'; g.lineCap = 'round'; g.beginPath(); g.arc(x, y, 11, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); g.stroke();
+    g.fillStyle = '#f3fbfd'; g.font = '700 11px Fredoka, ui-rounded, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(Math.max(0, Math.ceil(f.dur * (1 - p))), x, y + 0.5);
+  }
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const f of fxT) {
+    const [x, y] = toScreen(f.x, f.y - f.t * 34); g.globalAlpha = clamp(2 - f.t * 1.6, 0, 1);
+    g.font = `700 ${f.big ? 20 : 14}px Fredoka, ui-rounded, "PingFang SC", sans-serif`; g.lineWidth = 4; g.strokeStyle = '#0e3443'; g.lineJoin = 'round';
+    g.strokeText(f.s, x, y); g.fillStyle = f.col; g.fillText(f.s, x, y);
+  }
+  g.globalAlpha = 1;
+}
+
+function syncWalkers() {
+  const want = Math.min(12, 3 + 2 * count('shelter'));
+  const tiles = Object.keys(S.land);
+  while (walkers.length < want) { const [i, j] = tiles[Math.random() * tiles.length | 0].split(',').map(Number); walkers.push({ i: i + .5, j: j + .5, ti: i + .5, tj: j + .5, wait: Math.random() * 2, ph: Math.random() * 6, col: ['#3c7dd9', '#e2533f', '#4fbf73', '#8b6fd6'][walkers.length % 4] }); }
+}
+function tickWorld(dt, now) {
+  // idle production
+  const rate = prodRate();
+  if (rate > 0) {
+    S.acc += rate * dt;
+    while (S.acc >= 1) {
+      S.acc -= 1; const r = Math.random(), k = r < .35 ? 'w' : r < .65 ? 'm' : r < .85 ? 'p' : 'g'; S.res[k]++; bump(k);
+      const rs = Object.keys(S.land).filter(q => S.land[q].b && S.land[q].b.t === 'recycler');
+      if (rs.length) { const [i, j] = rs[Math.random() * rs.length | 0].split(',').map(Number), w = iso(i + .5, j + .5, LH + 26); fxT.push({ x: w[0], y: w[1], s: '+1', t: 0, col: RES[k].col }); }
+    }
+  }
+  // finished land
+  for (let n = S.fills.length - 1; n >= 0; n--) {
+    const f = S.fills[n]; if (now < f.start + f.dur * 1000) continue;
+    S.fills.splice(n, 1); S.land[key(f.i, f.j)] = { b: null, born: now }; S.stats.filled++;
+    const w = iso(f.i + .5, f.j + .5);
+    fxR.push({ x: w[0], y: w[1], t: 0 }, { x: w[0], y: w[1], t: -0.25 });
+    for (let k = 0; k < 34; k++) { const a = Math.random() * 6.28, v = 40 + Math.random() * 90; fxP.push({ x: w[0] + Math.cos(a) * 20, y: w[1] + Math.sin(a) * 10, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.5 - 120 - Math.random() * 80, life: 0.7 + Math.random() * 0.5, col: k % 3 ? '#e9fbff' : '#8fdcff', s: 2.5 + Math.random() * 3 }); }
+    fxT.push({ x: w[0], y: w[1] - 30, s: '新陆地 +1', t: 0, col: '#ffe27a', big: true });
+    shake = 0.5; sfx.land(); hud(); save();
+  }
+  // drifting junk
+  S.drift -= dt;
+  if (S.drift <= 0) {
+    S.drift = 70 + Math.random() * 40;
+    if (S.piles.filter(p => p.drift).length < 3) {
+      const free = []; const R = radius();
+      for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (ring(i, j) <= R && !isLand(i, j) && !pileAt(i, j) && !fillAt(i, j)) free.push([i, j]);
+      if (free.length) { const [i, j] = free[Math.random() * free.length | 0]; S.piles.push({ id: S.pid++, i, j, pic: DRIFT[Math.random() * DRIFT.length | 0], drift: true, part: Math.random() < 0.4 ? PK[Math.random() * 4 | 0] : null, born: now }); }
+    }
+  }
+  // fx
+  shake = Math.max(0, shake - dt * 1.4);
+  for (const r of fxR) r.t += dt; fxR = fxR.filter(r => r.t < 1.2);
+  for (const p of fxP) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt; p.life -= dt; } fxP = fxP.filter(p => p.life > 0);
+  for (const f of fxT) f.t += dt; fxT = fxT.filter(f => f.t < 1.3);
+  // people
+  for (const w of walkers) {
+    if (w.wait > 0) { w.wait -= dt; continue; }
+    const dx = w.ti - w.i, dy = w.tj - w.j, d = Math.hypot(dx, dy);
+    if (d < 0.03) {
+      const ci = Math.floor(w.i), cj = Math.floor(w.j), opt = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => [ci + a, cj + b]).filter(([a, b]) => { const L = S.land[key(a, b)]; return L && (!L.b || Math.random() < 0.25) && !(L.born && Date.now() - L.born < 1500); });
+      if (opt.length) { const [a, b] = opt[Math.random() * opt.length | 0]; w.ti = a + .3 + Math.random() * .4; w.tj = b + .3 + Math.random() * .4; }
+      w.wait = Math.random() * 1.8;
+    } else { const v = Math.min(d, 0.7 * dt); w.i += dx / d * v; w.j += dy / d * v; }
+  }
+}
+
+/* ---------- salvage puzzle ---------- */
+const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+let PZ = null;
+function bfs(G, cols, rows) {
+  const Wd = cols + 2, Hd = rows + 2, dist = new Int16Array(Wd * Hd).fill(-1), prev = new Int16Array(Wd * Hd).fill(-1);
+  const q = [(rows + 1) * Wd + ((cols + 1) >> 1)]; dist[q[0]] = 0;
+  for (let h = 0; h < q.length; h++) {
+    const k = q[h], x = k % Wd, y = (k / Wd) | 0;
+    for (const [dx, dy] of D4) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= Wd || ny >= Hd) continue; const nk = ny * Wd + nx; if (dist[nk] >= 0 || G[nk]) continue; dist[nk] = dist[k] + 1; prev[nk] = k; q.push(nk); }
+  }
+  return { dist, prev, Wd, entry: q[0] };
+}
+function findTarget(G, b, color) {
+  let best = null; const { dist, Wd } = b;
+  for (let k = 0; k < G.length; k++) {
+    const cell = G[k]; if (!cell) continue;
+    if ((cell.c || cell) !== color || cell.claimed) continue;
+    const x = k % Wd, y = (k / Wd) | 0;
+    for (const [dx, dy] of D4) { const nk = (y + dy) * Wd + x + dx, d = dist[nk]; if (d >= 0 && (!best || d < best.d)) best = { k, nk, d }; }
+  }
+  return best;
+}
+function genTrays(G0, cols, rows, r) {
+  const G = G0.slice(), trays = [], pal = [...new Set(G0.filter(Boolean))]; let last = null, left = G.filter(Boolean).length, guard = 0;
+  const removable = c => { const H2 = G.slice(); let n = 0; for (;;) { const t = findTarget(H2, bfs(H2, cols, rows), c); if (!t) break; H2[t.k] = null; n++; } return n; };
+  while (left > 0 && guard++ < 500) {
+    let opts = pal.map(c => ({ c, m: removable(c) })).filter(o => o.m > 0);
+    const pool = opts.filter(o => o.c !== last); if (pool.length) opts = pool;
+    let tot = opts.reduce((a, o) => a + o.m, 0), pickv = r() * tot, o = opts[0];
+    for (const q of opts) { if ((pickv -= q.m) <= 0) { o = q; break; } }
+    let k = Math.min(o.m, 4 + (r() * 6 | 0)); if (o.m - k <= 2) k = o.m;
+    for (let n = 0; n < k; n++) { const t = findTarget(G, bfs(G, cols, rows), o.c); G[t.k] = null; }
+    trays.push({ c: o.c, n: k, x: 0, y: 0, init: false }); last = o.c; left -= k;
+  }
+  for (let n = 0; n + 1 < trays.length; n += 2) if (r() < 0.3) { const a = trays[n]; trays[n] = trays[n + 1]; trays[n + 1] = a; }
+  return trays;
+}
+function startPuzzle(pile) {
+  const rowsS = picRows(pile), rows = rowsS.length, cols = rowsS[0].length, Wd = cols + 2, G = new Array(Wd * (rows + 2)).fill(null);
+  let total = 0;
+  rowsS.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') { G[(y + 1) * Wd + x + 1] = ch; total++; } }));
+  const trays = genTrays(G, cols, rows, rng(pile.id * 9973 + 7));
+  const cells = G.map((c, k) => c ? { c, claimed: false, d: Math.hypot(k % Wd - Wd / 2, (k / Wd | 0) - (rows + 2) / 2) } : null);
+  const columns = [[], [], []]; trays.forEach((t, n) => columns[n % 3].push(t));
+  PZ = { pile, rows, cols, Wd, G: cells, columns, slots: [null, null, null, null], walkers: [], got: {}, total, left: total, perfect: true, t: 0,
+    done: false, doneT: 0, fx: [], combo: 0, comboT: 0, dirty: true, b: null, exp: null, stuck: false, shakeSlots: 0 };
+  $('#hud').hidden = true; $('#pzui').hidden = false; $('#pzname').textContent = picName(pile);
+  pzHint(S.stats.cleared === 0 ? '点最前排的队伍，工人会搬走同色的外层方块' : ''); pzHud(); closeSheet();
+}
+function pzHint(s) { $('#pzhint').textContent = s; }
+function pzHud() { const d = PZ.total - PZ.left; $('#pzcount').textContent = d + ' / ' + PZ.total; $('#pzbar i').style.width = (d / PZ.total * 100) + '%'; }
+function pzLayout() {
+  const p = PZ, top = 104, trayH = 46, tg = 8, colW = Math.min(108, (W - 32 - 20) / 3), slotW = Math.min(74, (W - 32 - 24) / 4), slotH = 52;
+  const traysTop = H - 14 - 3 * (trayH + tg) - 14, slotsY = traysTop - 22 - slotH;
+  const areaH = slotsY - 26 - top, cell = Math.min((W - 20) / (p.cols + 2), areaH / (p.rows + 2.2), 36);
+  const ox = (W - (p.cols + 2) * cell) / 2, oy = top + (areaH - (p.rows + 2) * cell) / 2;
+  return { cell, ox, oy, slotW, slotH, slotsY, slotX: n => W / 2 + (n - 1.5) * (slotW + 8), colW, trayH, tg, traysTop, colX: n => W / 2 + (n - 1) * (colW + 10),
+    cx: k => ox + (k % p.Wd + .5) * cell, cy: k => oy + ((k / p.Wd | 0) + .5) * cell };
+}
+function pzTap(x, y) {
+  const p = PZ; if (!p || p.done) return; const L = pzLayout();
+  for (let n = 0; n < 3; n++) {
+    const tr = p.columns[n][0]; if (!tr) continue;
+    if (Math.abs(x - L.colX(n)) < L.colW / 2 + 4 && y > L.traysTop - 6 && y < L.traysTop + L.trayH + 6) {
+      const s = p.slots.indexOf(null);
+      if (s < 0) { sfx.no(); p.shakeSlots = 0.4; pzHint('待命位满了。点一支待命的队伍，让它回到队尾'); return; }
+      p.columns[n].shift(); p.slots[s] = tr; tr.cool = 0.22; sfx.tap(); if (S.stats.cleared === 0) pzHint('先清外层，里面的方块露出来才能搬'); return;
+    }
+  }
+  for (let n = 0; n < 4; n++) {
+    const tr = p.slots[n]; if (!tr) continue;
+    if (Math.abs(x - L.slotX(n)) < L.slotW / 2 + 3 && Math.abs(y - (L.slotsY + L.slotH / 2)) < L.slotH / 2 + 6) {
+      p.slots[n] = null; let m = 0; for (let c = 1; c < 3; c++) if (p.columns[c].length < p.columns[m].length) m = c;
+      p.columns[m].push(tr); p.perfect = false; sfx.tap(); pzHint(''); return;
+    }
+  }
+}
+function tickPuzzle(dt) {
+  const p = PZ, L = pzLayout(); p.t += dt; p.shakeSlots = Math.max(0, p.shakeSlots - dt); p.comboT -= dt; if (p.comboT < 0) p.combo = 0;
+  if (p.dirty) {
+    p.b = bfs(p.G, p.cols, p.rows); p.dirty = false; p.exp = new Uint8Array(p.G.length);
+    for (let k = 0; k < p.G.length; k++) if (p.G[k]) { const x = k % p.Wd, y = k / p.Wd | 0; for (const [dx, dy] of D4) if (p.b.dist[(y + dy) * p.Wd + x + dx] >= 0) { p.exp[k] = 1; break; } }
+  }
+  let could = false;
+  for (let n = 0; n < 4; n++) {
+    const cr = p.slots[n]; if (!cr) continue; cr.cool -= dt;
+    const tg = p.t > 0.5 ? findTarget(p.G, p.b, cr.c) : null; if (tg) could = true;
+    if (tg && cr.cool <= 0) {
+      p.G[tg.k].claimed = true; cr.n--; cr.cool = 0.075;
+      const pts = []; const path = []; for (let k = tg.nk; k >= 0; k = p.b.prev[k]) path.push(k); path.reverse();
+      for (const k of path) pts.push([L.cx(k), L.cy(k)]);
+      const ax = L.cx(tg.nk), ay = L.cy(tg.nk), bx = L.cx(tg.k), by = L.cy(tg.k); pts.push([lerp(ax, bx, .55), lerp(ay, by, .55)]);
+      p.walkers.push({ c: cr.c, pts, seg: 0, f: 0, k: tg.k, back: false, ph: Math.random() * 6 });
+      if (cr.n <= 0) p.slots[n] = null;
+    }
+  }
+  const sp = L.cell * 13;
+  for (const w of p.walkers) {
+    let move = sp * dt * (w.back ? 1.1 : 1);
+    while (move > 0 && !w.gone) {
+      const a = w.pts[w.seg], b = w.pts[w.seg + 1]; if (!b) break;
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 0.001, rem = len * (1 - w.f);
+      if (move < rem) { w.f += move / len; move = 0; } else {
+        move -= rem; w.seg++; w.f = 0;
+        if (w.seg >= w.pts.length - 1) {
+          if (!w.back) {
+            p.G[w.k] = null; p.dirty = true; p.left--; w.back = true; p.combo++; p.comboT = 0.5; sfx.pick(p.combo);
+            p.fx.push({ x: L.cx(w.k), y: L.cy(w.k), t: 0, col: PAL[w.c].col });
+            w.pts = w.pts.slice().reverse(); w.seg = 0; w.f = 0; pzHud();
+          } else { w.gone = true; p.got[w.c] = (p.got[w.c] || 0) + 1; sfx.drop(); }
+        }
+      }
+    }
+  }
+  p.walkers = p.walkers.filter(w => !w.gone);
+  for (const f of p.fx) f.t += dt; p.fx = p.fx.filter(f => f.t < 0.35);
+  // tray card positions ease toward their seats
+  const seat = (tr, x, y) => { if (!tr.init) { tr.x = x; tr.y = y + 30; tr.init = true; } const k = 1 - Math.pow(0.0001, dt); tr.x += (x - tr.x) * k; tr.y += (y - tr.y) * k; };
+  p.slots.forEach((tr, n) => tr && seat(tr, L.slotX(n), L.slotsY + L.slotH / 2));
+  p.columns.forEach((col, n) => col.forEach((tr, r) => seat(tr, L.colX(n), L.traysTop + L.trayH / 2 + Math.min(r, 3) * (L.trayH + L.tg))));
+  const stuck = !p.slots.includes(null) && !could && p.walkers.length === 0 && p.left > 0;
+  if (stuck && !p.stuck) pzHint('没有能搬的同色方块了。点一支待命的队伍，让它回到队尾');
+  p.stuck = stuck;
+  if (!p.done && p.left === 0 && p.walkers.length === 0) { p.done = true; p.doneT = 0; sfx.win(); }
+  if (p.done) { p.doneT += dt; if (p.doneT > 0.9 && !p.shown) { p.shown = true; finishPuzzle(); } }
+}
+function rr(x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function drawCrew(tr, w, h, o = {}) {
+  const x = tr.x - w / 2, y = tr.y - h / 2, col = PAL[tr.c].col;
+  g.globalAlpha = o.dim || 1;
+  g.fillStyle = shade(col, -0.38); rr(x, y + 4, w, h, 13); g.fill();
+  g.fillStyle = col; rr(x, y, w, h, 13); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.22)'; rr(x + 3, y + 3, w - 6, h * 0.36, 9); g.fill();
+  if (o.ring) { g.strokeStyle = '#fff'; g.lineWidth = 2.5; rr(x - 1, y - 1, w + 2, h + 6, 14); g.stroke(); }
+  const r = Math.min(11, h * 0.24), ix = x + w * 0.3, iy = y + h / 2 + 1;
+  drawWorker(ix, iy, r, tr.c, 0);
+  g.font = `700 ${Math.min(22, h * 0.48)}px Fredoka, ui-rounded, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 4; g.lineJoin = 'round'; g.strokeStyle = shade(col, -0.5); g.strokeText(tr.n, x + w * 0.68, y + h / 2 + 1); g.fillStyle = '#fff'; g.fillText(tr.n, x + w * 0.68, y + h / 2 + 1);
+  g.globalAlpha = 1;
+}
+function drawWorker(x, y, r, c, bob) {
+  const col = PAL[c].col; y -= bob;
+  g.fillStyle = '#10303c'; g.beginPath(); g.arc(x, y, r + 1.6, 0, 7); g.fill();
+  g.fillStyle = '#f6d7b0'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  g.fillStyle = shade(col, 0.15); g.beginPath(); g.arc(x, y, r, Math.PI * 1.05, Math.PI * 1.95); g.closePath(); g.fill();
+  g.fillStyle = '#10303c'; g.beginPath(); g.arc(x - r * .36, y + r * .2, r * .16, 0, 7); g.arc(x + r * .36, y + r * .2, r * .16, 0, 7); g.fill();
+}
+function drawBlock(x, y, s, col, dark) {
+  const r = s * 0.2;
+  g.fillStyle = shade(col, -0.32); rr(x - s / 2, y - s / 2, s, s, r); g.fill();
+  g.fillStyle = dark ? shade(col, -0.13) : col; rr(x - s / 2, y - s / 2, s, s * 0.86, r); g.fill();
+  const sr = s * 0.21; g.fillStyle = shade(col, dark ? -0.3 : -0.18); g.beginPath(); g.ellipse(x, y - s * 0.02, sr, sr * 0.82, 0, 0, 7); g.fill();
+  g.fillStyle = dark ? shade(col, -0.05) : shade(col, 0.2); g.beginPath(); g.ellipse(x, y - s * 0.1, sr, sr * 0.82, 0, 0, 7); g.fill();
+}
+function drawPuzzle(t) {
+  const p = PZ, L = pzLayout(), cell = L.cell;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2fa9c9'); bg.addColorStop(1, '#14708f'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 2; g.lineCap = 'round';
+  for (let k = 0; k < 16; k++) { const y = (k * 71 + 30) % H, x = (k * 137 + t * 8 * (k % 2 ? 1 : -1)) % (W + 60) - 30; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 26, y); g.stroke(); }
+  // raft
+  const rx = L.ox - 4, ry = L.oy - 4, rw = (p.cols + 2) * cell + 8, rh = (p.rows + 2) * cell + 8;
+  g.fillStyle = 'rgba(6,50,70,.3)'; rr(rx + 3, ry + 9, rw, rh, 18); g.fill();
+  g.fillStyle = '#9a7144'; rr(rx, ry + 5, rw, rh, 18); g.fill();
+  g.fillStyle = '#d6b27a'; rr(rx, ry, rw, rh, 18); g.fill();
+  g.save(); rr(rx, ry, rw, rh, 18); g.clip(); g.strokeStyle = 'rgba(120,80,40,.22)'; g.lineWidth = 1.5;
+  for (let y = ry + cell; y < ry + rh; y += cell) { g.beginPath(); g.moveTo(rx, y); g.lineTo(rx + rw, y); g.stroke(); } g.restore();
+  // hatch where blocks are dropped
+  const ent = (p.rows + 1) * p.Wd + ((p.cols + 1) >> 1), ex = L.cx(ent), ey = L.cy(ent);
+  g.fillStyle = '#9a7144'; g.beginPath(); g.ellipse(ex, ey, cell * 1.05, cell * 0.5, 0, 0, 7); g.fill();
+  g.fillStyle = '#0e3443'; g.beginPath(); g.ellipse(ex, ey + 1, cell * 0.85, cell * 0.36, 0, 0, 7); g.fill();
+  // buried part
+  if (p.pile.part) {
+    const cxm = L.ox + (p.cols + 2) * cell / 2, cym = L.oy + (p.rows + 2) * cell / 2, sz = cell * Math.min(4, Math.min(p.cols, p.rows) * 0.55) * (p.done ? 1 + 0.25 * easeOutBack(p.doneT / 0.5) : 1);
+    g.fillStyle = `rgba(255,236,150,${0.25 + 0.1 * Math.sin(t * 3)})`; g.beginPath(); g.arc(cxm, cym, sz * 0.62, 0, 7); g.fill();
+    drawPart(g, p.pile.part, cxm, cym, sz);
+  }
+  // blocks
+  for (let k = 0; k < p.G.length; k++) {
+    const c = p.G[k]; if (!c) continue;
+    const sc = clamp((p.t - c.d * 0.035) / 0.22, 0, 1); if (sc <= 0) continue;
+    drawBlock(L.cx(k), L.cy(k), (cell - 1.5) * easeOutBack(sc), PAL[c.c].col, p.exp && !p.exp[k]);
+  }
+  for (const f of p.fx) { const a = f.t / 0.35; g.strokeStyle = f.col; g.globalAlpha = 1 - a; g.lineWidth = 3; g.beginPath(); g.arc(f.x, f.y, cell * (0.3 + a * 0.7), 0, 7); g.stroke(); g.globalAlpha = 1; }
+  // workers
+  const wr = clamp(cell * 0.34, 6, 11);
+  for (const w of p.walkers) {
+    const a = w.pts[w.seg], b = w.pts[w.seg + 1] || a, x = lerp(a[0], b[0], w.f), y = lerp(a[1], b[1], w.f), bob = Math.abs(Math.sin(t * 16 + w.ph)) * 2.5;
+    if (w.back) drawBlock(x, y - wr - cell * 0.32 - bob, cell * 0.62, PAL[w.c].col, false);
+    drawWorker(x, y, wr, w.c, bob);
+  }
+  // waiting slots
+  const shx = p.shakeSlots > 0 ? Math.sin(p.shakeSlots * 60) * 4 : 0;
+  g.font = '600 11px Fredoka, ui-rounded, "PingFang SC", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(255,255,255,.75)';
+  g.fillText('待命位', W / 2, L.slotsY - 11);
+  for (let n = 0; n < 4; n++) {
+    const x = L.slotX(n) + shx;
+    g.fillStyle = 'rgba(6,50,70,.35)'; rr(x - L.slotW / 2, L.slotsY, L.slotW, L.slotH + 4, 14); g.fill();
+    g.setLineDash([5, 5]); g.strokeStyle = p.stuck ? `rgba(255,214,90,${0.6 + 0.4 * Math.sin(t * 6)})` : 'rgba(255,255,255,.35)'; g.lineWidth = 2; rr(x - L.slotW / 2, L.slotsY, L.slotW, L.slotH + 4, 14); g.stroke(); g.setLineDash([]);
+  }
+  p.slots.forEach(tr => tr && drawCrew(tr, L.slotW - 6, L.slotH - 4));
+  // queues
+  p.columns.forEach((col, n) => {
+    for (let r = Math.min(col.length, 3) - 1; r >= 0; r--) drawCrew(col[r], L.colW, L.trayH, { dim: r === 0 ? 1 : 0.5, ring: r === 0 });
+    if (col.length > 3) { g.fillStyle = 'rgba(255,255,255,.8)'; g.font = '600 12px Fredoka, ui-rounded, sans-serif'; g.fillText('+' + (col.length - 3), L.colX(n), H - 12); }
+  });
+}
+function finishPuzzle() {
+  const p = PZ, mult = (1 + farmBonus()) * (p.perfect ? 1.2 : 1), loot = {};
+  const raw = {}; for (const c in p.got) raw[PAL[c].r] = (raw[PAL[c].r] || 0) + p.got[c];
+  RK.forEach(k => { if (raw[k]) loot[k] = Math.round(raw[k] * mult); });
+  const part = p.pile.part;
+  modal(`<div class="card">
+    ${p.perfect ? '<div class="tag">一次调度都没浪费 · 材料 +20%</div>' : ''}
+    <h2>清扫完成</h2><div class="sub">${picName(p.pile)}已经拆干净，这片海可以填了</div>
+    ${part ? `<div class="prize">${partSVG(part)}</div><div class="pname">挖到了${PARTS[part].name}</div><div class="pdesc">${PARTS[part].desc}</div>` : ''}
+    <div class="loot">${costHTML(loot, null, true)}</div>
+    <button class="btn" data-act="pzdone" type="button">带回岛上</button></div>`);
+  $('#modal').onclick = e => {
+    if (!e.target.closest('[data-act="pzdone"]')) return;
+    gain(loot); if (part) { S.parts[part]++; S.stats.found[part]++; }
+    S.piles = S.piles.filter(q => q !== p.pile); S.stats.cleared++;
+    PZ = null; $('#modal').hidden = true; $('#pzui').hidden = true; $('#hud').hidden = false; sfx.claim(); hud(); save();
+  };
+}
+
+/* ---------- HUD + sheets ---------- */
+function bump(k) { const el = document.getElementById('res-' + k); if (!el) return; el.querySelector('b').textContent = fmt(S.res[k]); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+function costHTML(cost, part, plain) {
+  let h = '';
+  if (part) h += `<span class="cost ${!plain && S.parts[part] < 1 ? 'lack' : ''}">${partSVG(part)}${PARTS[part].name}</span>`;
+  for (const k of RK) if (cost[k]) h += `<span class="cost ${!plain && S.res[k] < cost[k] ? 'lack' : ''}"><i class="cube" style="--c:${RES[k].col}"></i>${plain ? '+' : ''}${fmt(cost[k])}</span>`;
+  return h;
+}
+function hud() {
+  $('#resbar').innerHTML = RK.map(k => `<div class="chip" id="res-${k}" title="${RES[k].name}"><i class="cube" style="--c:${RES[k].col}"></i><b>${fmt(S.res[k])}</b></div>`).join('');
+  $('#parts').innerHTML = PK.map(k => `<div class="part ${S.parts[k] ? '' : 'zero'}">${partSVG(k)}${S.parts[k]}</div>`).join('');
+  const rate = prodRate();
+  $('#stat').innerHTML = `陆地 <b>${landCount()}</b> 格 · 施工 <b>${S.fills.length}/${fillSlots()}</b>` + (rate ? `<br>回收 <b>${(rate * 60).toFixed(0)}</b>/分钟` : '');
+  const q = QUESTS[S.quest], el = $('#quest');
+  if (!q) { el.className = ''; el.innerHTML = `<div class="q-l"><div class="q-k">目标</div><div class="q-t">主线已完成，自由扩建你的岛</div></div>`; }
+  else {
+    const [a, b] = q.p(S), done = a >= b; el.className = done ? 'done' : '';
+    el.innerHTML = `<div class="q-l"><div class="q-k">目标 ${S.quest + 1}/${QUESTS.length}</div><div class="q-t">${q.t}</div></div>` + (done ? `<span class="q-claim">领取</span>` : `<span class="q-p">${a}/${b}</span>`);
+  }
+  $('#btnSound').innerHTML = S.mute
+    ? '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4ZM17 9l5 6M22 9l-5 6"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4ZM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
+}
+let toastT = 0;
+function toast(s) { const el = $('#toast'); el.textContent = s; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 2200); }
+function modal(html) { const m = $('#modal'); m.innerHTML = html; m.hidden = false; m.onclick = null; }
+function openSheet(html, handler) {
+  const s = $('#sheet'); s.innerHTML = html; s.hidden = false; $('#scrim').hidden = false; s.scrollTop = 0;
+  s.onclick = e => { const b = e.target.closest('[data-act]'); if (!b || b.disabled) return; if (b.dataset.act === 'close') return closeSheet(); handler && handler(b.dataset.act, b); };
+}
+function closeSheet() { $('#sheet').hidden = true; $('#scrim').hidden = true; sel = null; }
+const head = (img, title, sub) => `<div class="sh-head">${img ? `<img src="${img}" alt="">` : ''}<div class="tx"><h2>${title}</h2><p>${sub}</p></div><button class="x" data-act="close" type="button" aria-label="关闭">×</button></div>`;
+
+function sheetPile(p) {
+  const st = picStats(p);
+  openSheet(head(picThumb(p), picName(p), `${st.n} 个方块。拆完才能在这里填海。`) +
+    `<div class="kv"><span>能回收</span><span class="costs">${costHTML(st, null, true).replace(/\+/g, '')}</span></div>
+     <div class="kv"><span>埋着的东西</span><span>${p.part ? '有东西在反光，拆开才知道' : '只有材料'}</span></div>
+     <button class="btn" data-act="go" type="button">开始清扫</button>`, () => { sfx.tap(); startPuzzle(p); });
+}
+function sheetFill(i, j) {
+  const cost = fillCost(), busy = S.fills.length >= fillSlots(), ok = afford(cost) && !busy;
+  openSheet(head(null, '填海造陆', '把回收的材料压实，铺成一块新的陆地。') +
+    `<div class="kv"><span>需要材料</span><span class="costs">${costHTML(cost)}</span></div>
+     <div class="kv"><span>工期</span><span>${Math.ceil(fillTime())} 秒</span></div>
+     <div class="kv"><span>施工队</span><span>${S.fills.length}/${fillSlots()} 在忙${busy ? '，多建工棚可以同时开工' : ''}</span></div>
+     <button class="btn" data-act="go" type="button" ${ok ? '' : 'disabled'}>${busy ? '施工队都在忙' : ok ? '开工' : '材料不够，去清扫垃圾'}</button>`, () => {
+      pay(cost); S.fills.push({ i, j, start: Date.now(), dur: fillTime() }); sfx.build(); closeSheet(); hud(); save();
+    });
+}
+function sheetBuild(i, j) {
+  const items = BK.map(t => {
+    const d = BLD[t], cost = buildCost(t), full = d.max && count(t) >= d.max, ok = !full && afford(cost, d.part);
+    return `<button class="bitem ${ok ? '' : 'off'}" data-act="${t}" type="button" ${full ? 'disabled' : ''}><img src="${buildingIcon(t)}" alt="">
+      <div class="tx"><div class="nm">${d.name}</div><div class="ds">${full ? '已经有一座了，点它可以升级' : d.desc}</div><div class="costs">${full ? '' : costHTML(cost, d.part)}</div></div>
+      ${ok ? '<span class="go">建造</span>' : ''}</button>`;
+  }).join('');
+  openSheet(head(null, '在这块空地上建造', '核心零件要从海上的垃圾堆里挖出来。') + `<div class="blist">${items}</div>`, t => {
+    const d = BLD[t], cost = buildCost(t);
+    if (!afford(cost, d.part)) { sfx.no(); toast(d.part && S.parts[d.part] < 1 ? `还没有${PARTS[d.part].name}，去清扫会反光的垃圾堆` : '材料不够'); return; }
+    pay(cost, d.part); S.land[key(i, j)].b = { t, lv: 1 }; sfx.build(); built(i, j, d.name + ' 建成'); closeSheet();
+  });
+}
+function built(i, j, s) {
+  const w = iso(i + .5, j + .5, LH + 20); fxT.push({ x: w[0], y: w[1], s, t: 0, col: '#ffe27a', big: true });
+  for (let k = 0; k < 16; k++) { const a = Math.random() * 6.28; fxP.push({ x: w[0], y: w[1] + 14, vx: Math.cos(a) * 70, vy: -60 - Math.random() * 90, life: 0.6, col: '#ffe27a', s: 3 }); }
+  syncWalkers(); hud(); save();
+}
+function effect(b) {
+  switch (b.t) {
+    case 'shelter': return `施工队 +1，填海速度 +${25 * b.lv}%`;
+    case 'recycler': return `每分钟产出 ${(b.lv * 12 * (1 + 0.5 * lvSum('windmill'))).toFixed(0)} 份材料`;
+    case 'windmill': return `所有回收站产量 +${50 * b.lv}%`;
+    case 'lighthouse': return `视野半径 ${3 + b.lv} 格`;
+    case 'farm': return `清扫带回的材料 +${20 * b.lv}%`;
+  }
+}
+function sheetBuilding(i, j) {
+  const b = S.land[key(i, j)].b;
+  if (b.t === 'hq') {
+    openSheet(head(buildingIcon('hq'), '营地', '一切从这顶帐篷开始。') +
+      `<div class="kv"><span>陆地</span><span>${landCount()} 格</span></div>
+       <div class="kv"><span>清扫过的垃圾堆</span><span>${S.stats.cleared} 处</span></div>
+       <div class="kv"><span>回收站产量</span><span>${(prodRate() * 60).toFixed(0)} 份/分钟</span></div>
+       <div class="kv"><span>清扫加成</span><span>+${Math.round(farmBonus() * 100)}%</span></div>
+       <div class="kv"><span>离线时</span><span>回收站照常运转，最多累计 4 小时</span></div>`);
+    return;
+  }
+  const d = BLD[b.t], max = b.lv >= 3, cost = max ? {} : upCost(b), ok = !max && afford(cost, d.part);
+  openSheet(head(buildingIcon(b.t, b.lv), `${d.name} · ${b.lv} 级`, d.desc) +
+    `<div class="kv"><span>当前效果</span><span>${effect(b)}</span></div>` +
+    (max ? `<div class="kv"><span>升级</span><span>已经满级</span></div>` :
+      `<div class="kv"><span>升到 ${b.lv + 1} 级后</span><span>${effect({ t: b.t, lv: b.lv + 1 })}</span></div>
+       <div class="kv"><span>需要</span><span class="costs">${costHTML(cost, d.part)}</span></div>
+       <button class="btn" data-act="up" type="button" ${ok ? '' : 'disabled'}>${ok ? '升级' : d.part && S.parts[d.part] < 1 ? '还缺一个' + PARTS[d.part].name : '材料不够'}</button>`), () => {
+      pay(cost, d.part); b.lv++; sfx.build(); built(i, j, `${d.name}升到 ${b.lv} 级`); closeSheet();
+    });
+}
+function sheetMenu() {
+  openSheet(head(null, '拾荒岛', '清扫海上的垃圾堆，挖出零件，用回收的材料把海填成陆地。进度自动保存在这台设备上。') +
+    `<div class="kv"><span>清扫</span><span>点海上的垃圾堆</span></div>
+     <div class="kv"><span>填海</span><span>点紧挨陆地的海面</span></div>
+     <div class="kv"><span>建造</span><span>点岛上的空地</span></div>
+     <div class="kv"><span>移动和缩放</span><span>单指拖动，双指缩放</span></div>
+     <button class="btn ghost" data-act="reset" type="button">重新开始</button>`, act => {
+      if (act === 'reset') openSheet(head(null, '确定重新开始吗', '现在的岛、材料和零件都会清空，无法恢复。') +
+        `<button class="btn danger" data-act="yes" type="button">清空并重新开始</button><button class="btn ghost" data-act="close" type="button">算了</button>`, a => {
+          if (a !== 'yes') return; S = newState(); walkers = []; syncWalkers(); cam.x = 0; cam.y = 13 * TH; closeSheet(); hud(); save(); toast('新的一天开始了');
+        });
+    });
+}
+
+/* ---------- input ---------- */
+function pick(sx, sy) {
+  const wx = (sx - W / 2) / cam.s + cam.x, wy = (sy - H / 2) / cam.s + cam.y;
+  const R = radius(), front = S.piles.filter(p => ring(p.i, p.j) <= R).sort((a, b) => (b.i + b.j) - (a.i + a.j));
+  for (const p of front) { const s = pileSprite(p.pic), [bx, by] = iso(p.i + .5, p.j + .5); if (Math.abs(wx - bx) < s.w / 2 + 4 && wy > by - s.h && wy < by + TH * 0.7) return [p.i, p.j]; }
+  const f = yy => { const a = wx / TW, b = yy / TH; return [Math.floor((a + b) / 2), Math.floor((b - a) / 2)]; };
+  for (const off of [LH + 22, LH + 10]) { const [i, j] = f(wy + off), L = S.land[key(i, j)]; if (L && L.b) return [i, j]; }
+  const l = f(wy + LH); if (isLand(l[0], l[1])) return l;
+  return f(wy);
+}
+function worldTap(x, y) {
+  const [i, j] = pick(x, y);
+  if (!visible(i, j)) { toast(inMap(i, j) ? '这片海还在雾里，把灯塔建高一点才能看清' : '再往外就是无边的大海了'); return; }
+  sel = [i, j]; sfx.tap();
+  const L = S.land[key(i, j)], p = pileAt(i, j), f = fillAt(i, j);
+  if (L) return L.b ? sheetBuilding(i, j) : sheetBuild(i, j);
+  if (p) return sheetPile(p);
+  if (f) { sel = null; return toast(`正在填海，还要 ${Math.max(1, Math.ceil(f.dur - (Date.now() - f.start) / 1000))} 秒`); }
+  if (coast(i, j)) return sheetFill(i, j);
+  sel = null; toast('只能从海岸一格一格往外填');
+}
+const ptrs = new Map(); let drag = null;
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y, moved: false, t: performance.now() };
+  else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; drag = { pinch: Math.hypot(a.x - b.x, a.y - b.y), s: cam.s, moved: true }; }
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId) || !drag) return; ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (PZ) return;
+  if (ptrs.size >= 2 && drag.pinch) { const [a, b] = [...ptrs.values()]; cam.s = clamp(drag.s * Math.hypot(a.x - b.x, a.y - b.y) / drag.pinch, 0.5, 2.2); return; }
+  if (drag.pinch) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (!drag.moved && Math.hypot(dx, dy) > 8) drag.moved = true;
+  if (drag.moved) { cam.x = clamp(drag.cx - dx / cam.s, -N * TW, N * TW); cam.y = clamp(drag.cy - dy / cam.s, -TH, 2 * N * TH + TH); }
+});
+const up = e => {
+  if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId);
+  if (drag && !drag.moved && e.type === 'pointerup') { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; ac(); PZ ? pzTap(x, y) : worldTap(x, y); }
+  if (ptrs.size === 0) drag = null; else if (ptrs.size === 1) { const p = [...ptrs.values()][0]; drag = { x: p.x, y: p.y, cx: cam.x, cy: cam.y, moved: true }; }
+};
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', e => { if (PZ) return; e.preventDefault(); cam.s = clamp(cam.s * (e.deltaY < 0 ? 1.1 : 0.9), 0.5, 2.2); }, { passive: false });
+$('#scrim').addEventListener('click', closeSheet);
+$('#quest').addEventListener('click', () => {
+  const q = QUESTS[S.quest]; if (!q) return; const [a, b] = q.p(S);
+  if (a < b) { toast(q.t); return; }
+  gain(q.rw); S.quest++; sfx.claim(); hud(); save(); toast('奖励已到账');
+});
+$('#btnSound').addEventListener('click', () => { S.mute = !S.mute; hud(); save(); if (!S.mute) sfx.tap(); });
+$('#btnMenu').addEventListener('click', sheetMenu);
+$('#pzback').addEventListener('click', () => {
+  if (!PZ || PZ.done) return;
+  modal(`<div class="card"><h2>现在撤离吗</h2><div class="sub">这一趟搬到一半的方块不会带回来，垃圾堆会恢复原样。</div>
+    <button class="btn danger" data-act="leave" type="button">撤离</button><button class="btn ghost" data-act="stay" type="button">继续清扫</button></div>`);
+  $('#modal').onclick = e => { const b = e.target.closest('[data-act]'); if (!b) return; $('#modal').hidden = true; if (b.dataset.act === 'leave') { PZ = null; $('#pzui').hidden = true; $('#hud').hidden = false; hud(); } };
+});
+
+/* ---------- boot ---------- */
+function resize() {
+  const r = app.getBoundingClientRect(); W = r.width; H = r.height; DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+}
+let lastT = 0, hudT = 0, saveT = 0;
+function frame(ms) {
+  const dt = Math.min(0.05, (ms - lastT) / 1000 || 0); lastT = ms; const t = ms / 1000, now = Date.now();
+  if (W > 0) {
+    if (PZ) { tickPuzzle(dt); if (PZ) drawPuzzle(t); }
+    else { tickWorld(dt, now); drawWorld(now, t); hudT += dt; if (hudT > 1) { hudT = 0; hud(); } saveT += dt; if (saveT > 10) { saveT = 0; save(); } }
+  }
+  requestAnimationFrame(frame);
+}
+function start() {
+  S = load();
+  let away = 0;
+  if (S) {
+    away = Math.min(4 * 3600, Math.max(0, (Date.now() - S.last) / 1000));
+    const n = Math.floor(prodRate() * away);
+    if (n >= 5) { const o = { w: Math.round(n * .35), m: Math.round(n * .3), p: Math.round(n * .2), g: Math.round(n * .15) }; for (const k in o) S.res[k] += o[k]; setTimeout(() => toast(`你不在的时候，回收站攒了 ${n} 份材料`), 600); }
+    S.piles.forEach(p => { delete p.pal; delete p.born; });
+  } else S = newState();
+  resize(); cam.s = clamp(W / 330, 0.9, 1.7); syncWalkers(); hud();
+  new ResizeObserver(resize).observe(app);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+  requestAnimationFrame(frame);
+}
+window.__game = { get S() { return S; }, get PZ() { return PZ; }, pzLayout, startPuzzle, hud, cam, iso, toScreen };
+start();
+})();
+</script>
+</body>
+</html>
